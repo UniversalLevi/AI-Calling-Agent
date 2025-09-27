@@ -146,6 +146,9 @@ class EnhancedHindiTTS:
             api_key = os.getenv('ELEVENLABS_API_KEY')
             voice_id = os.getenv('ELEVENLABS_VOICE_ID')
             
+            # Use a default voice if custom voice fails
+            default_voice_id = "KYiVPerWcenyBTIvWbfY"  # Rachel - good for mixed languages
+            
             url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
             
             headers = {
@@ -182,7 +185,30 @@ class EnhancedHindiTTS:
                 return audio_file.name
             else:
                 print(f"❌ ElevenLabs TTS failed: {response.status_code}")
-                return None
+                print(f"❌ ElevenLabs error response: {response.text}")
+                
+                # Try with default voice if custom voice fails
+                if "voice_limit_reached" in response.text or "voice_not_found" in response.text:
+                    print("🔄 Trying with default voice...")
+                    url = f"https://api.elevenlabs.io/v1/text-to-speech/{default_voice_id}"
+                    response = requests.post(url, json=data, headers=headers)
+                    
+                    if response.status_code == 200:
+                        audio_dir = Path("audio_files")
+                        audio_dir.mkdir(exist_ok=True)
+                        timestamp = int(time.time() * 1000)
+                        audio_file = audio_dir / f"elevenlabs_default_{timestamp}.mp3"
+                        
+                        with open(audio_file, 'wb') as f:
+                            f.write(response.content)
+                        
+                        print(f"🎵 ElevenLabs Default TTS: {audio_file.name}")
+                        return audio_file.name
+                    else:
+                        print(f"❌ ElevenLabs Default TTS also failed: {response.status_code}")
+                        return None
+                else:
+                    return None
                 
         except Exception as e:
             print(f"❌ ElevenLabs TTS error: {e}")

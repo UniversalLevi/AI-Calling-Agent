@@ -18,12 +18,21 @@ import sys
 import time
 import threading
 import subprocess
+from pathlib import Path
 import signal
 import requests
 import warnings
-from pathlib import Path
 from flask import Flask, request, send_file
 from twilio.twiml.voice_response import VoiceResponse
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("✅ Environment variables loaded from .env file")
+except ImportError:
+    print("⚠️ python-dotenv not installed. Install with: pip install python-dotenv")
+    print("⚠️ Environment variables not loaded from .env file")
 
 # Suppress warnings for cleaner output
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -84,6 +93,7 @@ def create_audio_server():
 def create_voice_bot_server():
     """Create the voice bot server Flask app"""
     bot_app = Flask(__name__)
+    bot_app.config['DEBUG'] = True  # Enable debug mode
     
     # Initialize AI components
     print("🤖 Initializing Enhanced AI components...")
@@ -156,18 +166,47 @@ def create_voice_bot_server():
             # Use enhanced real-time conversation with shorter timeouts
             print("🚀 Starting realtime conversation mode")
             
-            # Send immediate greeting with Hindi voice
-            greeting = "Hello! नमस्ते! I'm your AI assistant in real-time mode. How can I help you today?"
-            response.say(greeting, voice='Polly.Aditi', language='hi-IN')
+            # Send natural female greeting using enhanced TTS
+            greeting = "Hi there! नमस्ते! I'm Priya, your AI assistant. How can I help you today?"
             
-            # Use very short gather timeout for real-time feel
+            try:
+                from src.enhanced_hindi_tts import speak_mixed_enhanced
+                
+                # Generate greeting audio using available TTS providers
+                audio_file = speak_mixed_enhanced(greeting)
+                
+                if audio_file and audio_file.endswith('.mp3'):
+                    # Play the generated audio file
+                    ngrok_url = get_ngrok_url()
+                    if ngrok_url:
+                        response.play(f"{ngrok_url}/audio/{audio_file}")
+                        print(f"🎵 Playing TTS greeting: {audio_file}")
+                    else:
+                        print("❌ Ngrok URL not available, using Twilio fallback")
+                        response.say(greeting, voice='Polly.Aditi', language='hi-IN')
+                else:
+                    # Fallback to Twilio voice
+                    response.say(greeting, voice='Polly.Aditi', language='hi-IN')
+                    print("⚠️ Using Twilio fallback for greeting")
+                    
+            except Exception as e:
+                print(f"❌ TTS greeting error: {e}")
+                # Fallback to Twilio voice
+                response.say(greeting, voice='Polly.Aditi', language='hi-IN')
+            
+            # Add natural pause after greeting
+            response.pause(length=0.5)
+            
+            # Use optimized gather settings for better speech recognition
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=1,  # Very short timeout for interruption feel
+                timeout=8,  # Longer timeout for better recognition
                 speech_timeout='auto',
-                language='en-IN',
-                partial_result_callback='/partial_speech'
+                language='en-IN',  # Start with English, will switch based on detection
+                partial_result_callback='/partial_speech',
+                enhanced='true',  # Use enhanced speech recognition
+                profanity_filter='false'  # Don't filter speech
             )
             response.append(gather)
             
@@ -327,23 +366,64 @@ def create_voice_bot_server():
                     else:
                         bot_app.call_language[call_sid] = detected_language
                 
-                # Fast AI processing
+                # Fast AI processing with natural female responses
                 if bot_app.gpt:
-                    bot_response = bot_app.gpt.ask(speech_result, detected_language)
-                    print(f"⚡ Fast AI response ({detected_language}): {bot_response}")
+                    # Add context for more natural female responses
+                    enhanced_prompt = f"You are a helpful female AI assistant. Respond naturally and conversationally in {detected_language}. Be warm, friendly, and helpful. Keep responses concise but natural."
+                    bot_response = bot_app.gpt.ask(f"{enhanced_prompt}\n\nUser: {speech_result}", detected_language)
+                    print(f"⚡ Natural AI response ({detected_language}): {bot_response}")
                 else:
-                    # Quick fallback
+                    # Quick fallback with natural responses
                     if detected_language == 'hi':
-                        bot_response = f"मैं समझ गया: {speech_result}"
+                        bot_response = f"हाँ, मैं समझ गई। {speech_result}"
                     else:
-                        bot_response = f"Got it: {speech_result}"
+                        bot_response = f"Yes, I understand. {speech_result}"
                 
-                # Quick TTS with proper Hindi voice and interruption handling
-                # Split long responses into shorter segments for better interruption
-                words = bot_response.split()
-                if len(words) > 6:  # If response is long, split it
-                    # Split into chunks of 4-5 words
-                    chunk_size = 4
+                # Use enhanced TTS with consistent voice and interruption support
+                try:
+                    from src.enhanced_hindi_tts import speak_mixed_enhanced
+                    
+                    # Generate audio file using available TTS providers
+                    audio_file = speak_mixed_enhanced(bot_response)
+                    
+                    if audio_file and audio_file.endswith('.mp3'):
+                        # Play the generated audio file
+                        ngrok_url = get_ngrok_url()
+                        if ngrok_url:
+                            response.play(f"{ngrok_url}/audio/{audio_file}")
+                            print(f"🎵 Playing TTS audio: {audio_file}")
+                        else:
+                            print("❌ Ngrok URL not available, using Twilio fallback")
+                            if detected_language in ['hi', 'mixed']:
+                                response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
+                            else:
+                                response.say(bot_response, voice='Polly.Joanna', language='en-IN')
+                    else:
+                        # Fallback to Twilio voices with interruption support
+                        # Split response into shorter segments for better interruption
+                        words = bot_response.split()
+                        chunk_size = 4  # Smaller chunks for interruption
+                        
+                        for i in range(0, len(words), chunk_size):
+                            chunk = ' '.join(words[i:i + chunk_size])
+                            
+                            if detected_language in ['hi', 'mixed']:
+                                response.say(chunk, voice='Polly.Aditi', language='hi-IN')
+                            else:
+                                response.say(chunk, voice='Polly.Joanna', language='en-IN')
+                            
+                            # Add brief pause between chunks for interruption
+                            if i + chunk_size < len(words):
+                                response.pause(length=0.2)
+                        
+                        print("⚠️ Using Twilio fallback voices with interruption support")
+                        
+                except Exception as e:
+                    print(f"❌ TTS error: {e}")
+                    # Fallback to Twilio voices with interruption support
+                    words = bot_response.split()
+                    chunk_size = 4  # Smaller chunks for interruption
+                    
                     for i in range(0, len(words), chunk_size):
                         chunk = ' '.join(words[i:i + chunk_size])
                         
@@ -352,39 +432,47 @@ def create_voice_bot_server():
                         else:
                             response.say(chunk, voice='Polly.Joanna', language='en-IN')
                         
-                        # Add a brief pause between chunks
+                        # Add brief pause between chunks for interruption
                         if i + chunk_size < len(words):
                             response.pause(length=0.2)
-                else:
-                    # Short response, speak normally
-                    if detected_language in ['hi', 'mixed']:
-                        response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
-                    else:
-                        response.say(bot_response, voice='Polly.Joanna', language='en-IN')
+                
+                # Add a brief pause after speaking for natural conversation flow
+                response.pause(length=0.5)
                 
             except Exception as e:
                 print(f"❌ Real-time processing error: {e}")
-                response.say("Sorry, please repeat that.")
+                import traceback
+                print("🔍 Full traceback:")
+                traceback.print_exc()
+                print("🔍 Request data:")
+                print(f"   Speech Result: {request.form.get('SpeechResult', 'None')}")
+                print(f"   Call SID: {request.form.get('CallSid', 'None')}")
+                print(f"   From: {request.form.get('From', 'None')}")
+                response.say("Sorry, there was an error. Please try again.")
             
-            # Continue with very short timeout for real-time feel
+            # Continue with optimized speech recognition
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=0.5,  # Even shorter timeout for interruption feel
+                timeout=8,  # Longer timeout for better recognition
                 speech_timeout='auto',
                 language='en-IN' if detected_language == 'en' else 'hi-IN',
-                partial_result_callback='/partial_speech'
+                partial_result_callback='/partial_speech',
+                enhanced='true',  # Use enhanced speech recognition
+                profanity_filter='false'  # Don't filter speech
             )
             response.append(gather)
             
         else:
-            # No speech detected - quick recovery
+            # No speech detected - optimized recovery
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=2,
+                timeout=8,  # Longer timeout for better recognition
                 language='en-IN',
-                partial_result_callback='/partial_speech'
+                partial_result_callback='/partial_speech',
+                enhanced='true',  # Use enhanced speech recognition
+                profanity_filter='false'  # Don't filter speech
             )
             response.append(gather)
         
@@ -409,19 +497,42 @@ def create_voice_bot_server():
             bot_app.call_language[call_sid]['partial_speech_count'] += 1
             bot_app.call_language[call_sid]['last_partial'] = partial_result
             
-            # If we get multiple partial results, it might be an interruption
-            # But only if the partial speech is getting longer (user is actually speaking)
-            if bot_app.call_language[call_sid]['partial_speech_count'] > 5:
+            # Detect interruption only if we're getting consistent speech
+            # This means the user is speaking while bot should be speaking
+            if bot_app.call_language[call_sid]['partial_speech_count'] > 2:
                 current_length = len(partial_result)
                 last_length = len(bot_app.call_language[call_sid].get('last_partial', ''))
                 
-                # Only consider it an interruption if speech is getting longer
-                if current_length > last_length:
-                    print(f"🛑 Potential interruption detected for call {call_sid}")
+                # If speech is getting longer and more confident, it's an interruption
+                if current_length > last_length and len(partial_result) > 3:
+                    print(f"🛑 Interruption detected! User said: {partial_result}")
                     # Mark for interruption handling
                     bot_app.call_language[call_sid]['interruption_detected'] = True
         
         return '', 200
+    
+    @bot_app.route('/audio/<filename>')
+    def serve_audio(filename):
+        """Serve generated audio files to Twilio"""
+        try:
+            from flask import send_from_directory, Response
+            audio_dir = Path("audio_files")
+            
+            if not audio_dir.exists():
+                print(f"❌ Audio directory not found: {audio_dir}")
+                return "Audio directory not found", 404
+                
+            audio_file = audio_dir / filename
+            if not audio_file.exists():
+                print(f"❌ Audio file not found: {audio_file}")
+                return "Audio file not found", 404
+            
+            print(f"🎵 Serving audio file: {filename}")
+            return send_from_directory(str(audio_dir), filename, mimetype='audio/mpeg')
+            
+        except Exception as e:
+            print(f"❌ Audio serving error: {e}")
+            return Response("Error serving audio", status=500)
     
     @bot_app.route('/status', methods=['POST'])
     def status():
