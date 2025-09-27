@@ -12,7 +12,7 @@ load_dotenv()
 # =============================================================================
 SAMPLE_RATE = int(os.getenv("SAMPLE_RATE", "20000"))
 CHANNELS = int(os.getenv("CHANNELS", "1"))
-RECORD_SECONDS = float(os.getenv("RECORD_SECONDS", "7.0"))
+RECORD_SECONDS = float(os.getenv("RECORD_SECONDS", "4.0"))
 DEVICE_INDEX_IN = os.getenv("DEVICE_INDEX_IN")
 DEVICE_INDEX_OUT = os.getenv("DEVICE_INDEX_OUT")
 

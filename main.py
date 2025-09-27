@@ -36,11 +36,22 @@ sys.path.append('src')
 from dotenv import load_dotenv
 load_dotenv()
 
+# Import realtime voice bot components
+try:
+    from src.realtime_voice_bot import RealtimeVoiceBot, TwilioRealtimeIntegration
+    REALTIME_AVAILABLE = True
+    print("✅ Realtime voice capabilities available")
+except ImportError as e:
+    REALTIME_AVAILABLE = False
+    print(f"⚠️ Realtime voice capabilities not available: {e}")
+
 # Global variables
 voice_bot_app = None
 audio_server_app = None
 ngrok_process = None
 running_services = {}
+realtime_voice_bot = None
+twilio_realtime_integration = None
 
 # =============================================================================
 # AUDIO SERVER (Built-in)
@@ -136,8 +147,43 @@ def create_voice_bot_server():
         call_sid = request.form.get('CallSid')
         print(f"📞 Incoming call from: {caller}")
         
+        # Check if realtime mode is available and requested
+        realtime_mode = request.args.get('realtime', 'false').lower() == 'true'
+        print(f"🔍 Realtime mode requested: {realtime_mode}")
+        print(f"🔍 REALTIME_AVAILABLE: {REALTIME_AVAILABLE}")
+        
+        if REALTIME_AVAILABLE and realtime_mode:
+            # Use enhanced real-time conversation with shorter timeouts
+            print("🚀 Starting realtime conversation mode")
+            
+            # Send immediate greeting with Hindi voice
+            greeting = "Hello! नमस्ते! I'm your AI assistant in real-time mode. How can I help you today?"
+            response.say(greeting, voice='Polly.Aditi', language='hi-IN')
+            
+            # Use very short gather timeout for real-time feel
+            gather = response.gather(
+                input='speech',
+                action='/process_speech_realtime',
+                timeout=1,  # Very short timeout for interruption feel
+                speech_timeout='auto',
+                language='en-IN',
+                partial_result_callback='/partial_speech'
+            )
+            response.append(gather)
+            
+            # Initialize realtime voice bot for this call
+            global realtime_voice_bot, twilio_realtime_integration
+            if not realtime_voice_bot:
+                realtime_voice_bot = RealtimeVoiceBot()
+                twilio_realtime_integration = TwilioRealtimeIntegration(realtime_voice_bot)
+            
+            return str(response)
+        else:
+            # Use traditional turn-based conversation
+            print("📞 Starting traditional conversation mode")
+        
         # Mixed language greeting
-        greeting = "Hello! नमस्ते! I'm your AI assistant. How can I help you today? आज मैं आपकी कैसे मदद कर सकता हूं?"
+        greeting = "Hello! I'm your AI assistant. आज मैं आपकी कैसे मदद कर सकता हूं?"
         response.say(greeting)
         
         # Default to English-India initially; switch after first detection
@@ -249,12 +295,184 @@ def create_voice_bot_server():
         
         return str(response)
     
+    @bot_app.route('/process_speech_realtime', methods=['POST'])
+    def process_speech_realtime():
+        """Enhanced real-time speech processing with interruption handling"""
+        response = VoiceResponse()
+        speech_result = request.form.get('SpeechResult', '')
+        caller = request.form.get('From', 'Unknown')
+        call_sid = request.form.get('CallSid')
+        
+        print(f"⚡ Real-time caller {caller} said: {speech_result}")
+        
+        # Check for interruption
+        interruption_detected = False
+        if call_sid and call_sid in bot_app.call_language:
+            if isinstance(bot_app.call_language[call_sid], dict):
+                interruption_detected = bot_app.call_language[call_sid].get('interruption_detected', False)
+                # Reset interruption flag
+                bot_app.call_language[call_sid]['interruption_detected'] = False
+                bot_app.call_language[call_sid]['partial_speech_count'] = 0
+        
+        if speech_result:
+            try:
+                # Fast language detection
+                detected_language = detect_language(speech_result)
+                print(f"🌐 Language: {detected_language}")
+                
+                # Store language for this call
+                if call_sid:
+                    if isinstance(bot_app.call_language.get(call_sid), dict):
+                        bot_app.call_language[call_sid]['language'] = detected_language
+                    else:
+                        bot_app.call_language[call_sid] = detected_language
+                
+                # Fast AI processing
+                if bot_app.gpt:
+                    bot_response = bot_app.gpt.ask(speech_result, detected_language)
+                    print(f"⚡ Fast AI response ({detected_language}): {bot_response}")
+                else:
+                    # Quick fallback
+                    if detected_language == 'hi':
+                        bot_response = f"मैं समझ गया: {speech_result}"
+                    else:
+                        bot_response = f"Got it: {speech_result}"
+                
+                # Quick TTS with proper Hindi voice and interruption handling
+                # Split long responses into shorter segments for better interruption
+                words = bot_response.split()
+                if len(words) > 6:  # If response is long, split it
+                    # Split into chunks of 4-5 words
+                    chunk_size = 4
+                    for i in range(0, len(words), chunk_size):
+                        chunk = ' '.join(words[i:i + chunk_size])
+                        
+                        if detected_language in ['hi', 'mixed']:
+                            response.say(chunk, voice='Polly.Aditi', language='hi-IN')
+                        else:
+                            response.say(chunk, voice='Polly.Joanna', language='en-IN')
+                        
+                        # Add a brief pause between chunks
+                        if i + chunk_size < len(words):
+                            response.pause(length=0.2)
+                else:
+                    # Short response, speak normally
+                    if detected_language in ['hi', 'mixed']:
+                        response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
+                    else:
+                        response.say(bot_response, voice='Polly.Joanna', language='en-IN')
+                
+            except Exception as e:
+                print(f"❌ Real-time processing error: {e}")
+                response.say("Sorry, please repeat that.")
+            
+            # Continue with very short timeout for real-time feel
+            gather = response.gather(
+                input='speech',
+                action='/process_speech_realtime',
+                timeout=0.5,  # Even shorter timeout for interruption feel
+                speech_timeout='auto',
+                language='en-IN' if detected_language == 'en' else 'hi-IN',
+                partial_result_callback='/partial_speech'
+            )
+            response.append(gather)
+            
+        else:
+            # No speech detected - quick recovery
+            gather = response.gather(
+                input='speech',
+                action='/process_speech_realtime',
+                timeout=2,
+                language='en-IN',
+                partial_result_callback='/partial_speech'
+            )
+            response.append(gather)
+        
+        return str(response)
+    
+    @bot_app.route('/partial_speech', methods=['POST'])
+    def partial_speech():
+        """Handle partial speech results for interruption detection"""
+        partial_result = request.form.get('UnstableSpeechResult', '')
+        call_sid = request.form.get('CallSid')
+        
+        if partial_result:
+            print(f"🎤 Partial speech: {partial_result}")
+            # Store partial speech for interruption detection
+            if call_sid not in bot_app.call_language:
+                bot_app.call_language[call_sid] = {}
+            
+            # Track partial speech confidence
+            if 'partial_speech_count' not in bot_app.call_language[call_sid]:
+                bot_app.call_language[call_sid]['partial_speech_count'] = 0
+            
+            bot_app.call_language[call_sid]['partial_speech_count'] += 1
+            bot_app.call_language[call_sid]['last_partial'] = partial_result
+            
+            # If we get multiple partial results, it might be an interruption
+            # But only if the partial speech is getting longer (user is actually speaking)
+            if bot_app.call_language[call_sid]['partial_speech_count'] > 5:
+                current_length = len(partial_result)
+                last_length = len(bot_app.call_language[call_sid].get('last_partial', ''))
+                
+                # Only consider it an interruption if speech is getting longer
+                if current_length > last_length:
+                    print(f"🛑 Potential interruption detected for call {call_sid}")
+                    # Mark for interruption handling
+                    bot_app.call_language[call_sid]['interruption_detected'] = True
+        
+        return '', 200
+    
     @bot_app.route('/status', methods=['POST'])
     def status():
         call_sid = request.form.get('CallSid')
         call_status = request.form.get('CallStatus')
         print(f"📊 Call {call_sid} status: {call_status}")
         return "OK"
+    
+    @bot_app.route('/media/<call_sid>', methods=['POST'])
+    def handle_media_stream(call_sid):
+        """Handle Twilio Media Streams for real-time audio processing"""
+        try:
+            media_data = request.get_json()
+            
+            if media_data and twilio_realtime_integration:
+                twilio_realtime_integration.handle_media_stream(call_sid, media_data)
+            
+            return '', 200
+            
+        except Exception as e:
+            print(f"❌ Error handling media stream: {e}")
+            return '', 500
+    
+    @bot_app.route('/voice_realtime', methods=['POST'])
+    def voice_realtime():
+        """Enhanced voice endpoint with automatic realtime mode"""
+        response = VoiceResponse()
+        
+        caller = request.form.get('From', 'Unknown')
+        call_sid = request.form.get('CallSid')
+        print(f"📞 Realtime call from: {caller}")
+        
+        if REALTIME_AVAILABLE:
+            # Start Media Stream for real-time audio
+            from twilio.twiml.voice_response import Connect, Stream
+            connect = Connect()
+            stream = Stream(url=f'{request.url_root.rstrip("/")}/media/{call_sid}')
+            connect.append(stream)
+            response.append(connect)
+            
+            # Initialize realtime voice bot for this call
+            global realtime_voice_bot, twilio_realtime_integration
+            if not realtime_voice_bot:
+                realtime_voice_bot = RealtimeVoiceBot()
+                twilio_realtime_integration = TwilioRealtimeIntegration(realtime_voice_bot)
+            
+            print("🚀 Realtime conversation mode activated")
+        else:
+            response.say("I'm sorry, realtime mode is not available. Please try again later.")
+        
+        return str(response)
     
     return bot_app
 
@@ -437,6 +655,61 @@ def make_call(phone_number):
         print(f"❌ Call failed: {e}")
         return False
 
+def make_realtime_call(phone_number):
+    """Make a real-time call with interruption handling"""
+    print(f"\n⚡ Making real-time call to: {phone_number}")
+    
+    try:
+        from twilio.rest import Client
+        
+        # Get credentials
+        account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+        auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+        twilio_number = os.getenv('TWILIO_PHONE_NUMBER')
+        
+        if not all([account_sid, auth_token, twilio_number]):
+            print("❌ Missing Twilio credentials")
+            return False
+        
+        ngrok_url = get_ngrok_url()
+        if not ngrok_url:
+            print("❌ Ngrok not running")
+            return False
+        
+        # Use the regular voice endpoint with realtime parameter
+        webhook_url = f"{ngrok_url}/voice?realtime=true"
+        print(f"🔗 Webhook URL: {webhook_url}")
+        
+        # Initialize Twilio client
+        client = Client(account_sid, auth_token)
+        
+        # Update webhook
+        print("🔄 Updating webhook for real-time mode...")
+        incoming_phone_number = client.incoming_phone_numbers.list(
+            phone_number=twilio_number
+        )[0]
+        incoming_phone_number.update(voice_url=webhook_url)
+        
+        # Make the call
+        print("📞 Initiating real-time call...")
+        call = client.calls.create(
+            to=phone_number,
+            from_=twilio_number,
+            url=webhook_url
+        )
+        
+        print("✅ Real-time call initiated!")
+        print(f"📞 SID: {call.sid}")
+        print("🎯 Phone should ring!")
+        print("⚡ Real-time conversation mode active!")
+        print("💬 Speak naturally - you can interrupt the bot!")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Real-time call failed: {e}")
+        return False
+
 # =============================================================================
 # ENVIRONMENT CHECK
 # =============================================================================
@@ -497,16 +770,27 @@ def main_menu():
         clear_screen()
         print("🤖 AI CALLING BOT")
         print("🌐 Hindi + English Support")
+        if REALTIME_AVAILABLE:
+            print("⚡ Real-time Conversation Mode Available")
         print("-" * 30)
         print("1. 📞 Call a number")
         print("2. 📱 Call me")
-        print("3. 🔍 Status")
-        print("4. 🧪 Test")
-        print("5. 🎤 Voice bot")
-        print("6. ❌ Exit")
+        if REALTIME_AVAILABLE:
+            print("3. ⚡ Call with real-time mode")
+            print("4. 🎤 Test real-time locally")
+            print("5. 🔍 Status")
+            print("6. 🧪 Test")
+            print("7. 🎤 Voice bot")
+            print("8. ❌ Exit")
+        else:
+            print("3. 🔍 Status")
+            print("4. 🧪 Test")
+            print("5. 🎤 Voice bot")
+            print("6. ❌ Exit")
         print("-" * 30)
         
-        choice = input("Choice (1-6): ").strip()
+        max_choice = 8 if REALTIME_AVAILABLE else 6
+        choice = input(f"Choice (1-{max_choice}): ").strip()
         
         if choice == "1":
             phone = input("📞 Phone number: ").strip()
@@ -521,11 +805,27 @@ def main_menu():
                 make_call(test_number)
             input("\nPress Enter to continue...")
             
-        elif choice == "3":
+        elif choice == "3" and REALTIME_AVAILABLE:
+            phone = input("📞 Phone number for real-time call: ").strip()
+            if phone:
+                make_realtime_call(phone)
+                input("\nPress Enter to continue...")
+            
+        elif choice == "4" and REALTIME_AVAILABLE:
+            print("🎤 Starting real-time voice bot locally...")
+            print("💡 Speak naturally - the bot will respond in real-time!")
+            print("💡 You can interrupt the bot while it's speaking!")
+            try:
+                subprocess.run([sys.executable, "-m", "src.realtime_voice_bot"])
+            except KeyboardInterrupt:
+                print("\n🎤 Stopped.")
+            input("\nPress Enter to continue...")
+            
+        elif choice == ("5" if REALTIME_AVAILABLE else "3"):
             show_status()
             input("\nPress Enter to continue...")
             
-        elif choice == "4":
+        elif choice == ("6" if REALTIME_AVAILABLE else "4"):
             print("🧪 Running tests...")
             try:
                 subprocess.run([sys.executable, "test_mixed_language.py"], check=True)
@@ -533,8 +833,8 @@ def main_menu():
                 print("❌ Test failed")
             input("\nPress Enter to continue...")
             
-        elif choice == "5":
-            print("🎤 Starting voice bot...")
+        elif choice == ("7" if REALTIME_AVAILABLE else "5"):
+            print("🎤 Starting traditional voice bot...")
             print("💡 Speak Hindi or English!")
             try:
                 subprocess.run([sys.executable, "-m", "src.voice_bot"])
@@ -542,12 +842,12 @@ def main_menu():
                 print("\n🎤 Stopped.")
             input("\nPress Enter to continue...")
             
-        elif choice == "6":
+        elif choice == ("8" if REALTIME_AVAILABLE else "6"):
             print("👋 Goodbye!")
             break
             
         else:
-            print("❌ Invalid choice (1-6)")
+            print(f"❌ Invalid choice (1-{max_choice})")
             time.sleep(1)
 
 def show_project_info():
