@@ -385,14 +385,33 @@ def create_voice_bot_server():
         print(f"⚡ Real-time caller {caller} said: {speech_result}")
         print(f"🔍 DEBUG: bot_app.gpt exists: {bot_app.gpt is not None}")
         
-        # Check for interruption
+        # Check for interruption first
         interruption_detected = False
+        interrupted_text = ""
         if call_sid and call_sid in bot_app.call_language:
             if isinstance(bot_app.call_language[call_sid], dict):
                 interruption_detected = bot_app.call_language[call_sid].get('interruption_detected', False)
-                # Reset interruption flag
+                interrupted_text = bot_app.call_language[call_sid].get('interrupted_text', '')
+                # Reset interruption flags
                 bot_app.call_language[call_sid]['interruption_detected'] = False
                 bot_app.call_language[call_sid]['partial_speech_count'] = 0
+                bot_app.call_language[call_sid]['interrupted_text'] = ''
+        
+        # Check for interrupted text from URL parameter (from redirect)
+        interrupted_text_from_url = request.args.get('interrupted_text', '')
+        if interrupted_text_from_url:
+            print(f"🛑 Processing interrupted speech from URL: {interrupted_text_from_url}")
+            speech_result = interrupted_text_from_url
+            interruption_detected = False
+            interrupted_text = ""
+        
+        # If interruption was detected, process the interrupted text instead
+        elif interruption_detected and interrupted_text:
+            print(f"🛑 Processing interrupted speech: {interrupted_text}")
+            speech_result = interrupted_text
+            # Reset interruption flags
+            interruption_detected = False
+            interrupted_text = ""
         
         if speech_result:
             try:
@@ -453,6 +472,11 @@ def create_voice_bot_server():
                 try:
                     from src.enhanced_hindi_tts import speak_mixed_enhanced
                     
+                    # Mark bot as speaking for interruption detection
+                    if call_sid:
+                        bot_app.call_language[call_sid]['is_bot_speaking'] = True
+                        print(f"🤖 Bot started speaking for call {call_sid}")
+                    
                     # Generate audio file using available TTS providers
                     audio_file = speak_mixed_enhanced(bot_response)
                     
@@ -476,6 +500,11 @@ def create_voice_bot_server():
                             response.say(bot_response, voice='Polly.Joanna', language='en-IN')
                         
                         print("⚠️ Using Twilio fallback voices")
+                    
+                    # Mark bot as finished speaking
+                    if call_sid:
+                        bot_app.call_language[call_sid]['is_bot_speaking'] = False
+                        print(f"🤖 Bot finished speaking for call {call_sid}")
                         
                 except Exception as e:
                     print(f"❌ TTS error: {e}")
@@ -484,6 +513,10 @@ def create_voice_bot_server():
                         response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
                     else:
                         response.say(bot_response, voice='Polly.Joanna', language='en-IN')
+                    
+                    # Mark bot as finished speaking even on error
+                    if call_sid:
+                        bot_app.call_language[call_sid]['is_bot_speaking'] = False
                 
                 # Add a brief pause after speaking for natural conversation flow
                 response.pause(length=0.2)
@@ -503,7 +536,7 @@ def create_voice_bot_server():
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=3,  # Shorter timeout for faster interruption detection
+                timeout=2,  # Very short timeout for faster interruption detection
                 speech_timeout='auto',
                 language='en-IN' if detected_language == 'en' else 'hi-IN',
                 partial_result_callback='/partial_speech',
@@ -517,7 +550,7 @@ def create_voice_bot_server():
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=3,  # Shorter timeout for faster interruption detection
+                timeout=2,  # Very short timeout for faster interruption detection
                 language='en-IN',
                 partial_result_callback='/partial_speech',
                 enhanced='true',  # Use enhanced speech recognition
@@ -529,7 +562,7 @@ def create_voice_bot_server():
     
     @bot_app.route('/partial_speech', methods=['POST'])
     def partial_speech():
-        """Handle partial speech results for faster interruption detection"""
+        """Handle partial speech results for interruption detection"""
         partial_result = request.form.get('UnstableSpeechResult', '')
         call_sid = request.form.get('CallSid')
         
@@ -547,19 +580,66 @@ def create_voice_bot_server():
             bot_app.call_language[call_sid]['partial_speech_count'] += 1
             bot_app.call_language[call_sid]['last_partial'] = partial_result
             
-            # Faster interruption detection - trigger after just 2 partial results
-            if bot_app.call_language[call_sid]['partial_speech_count'] >= 2:
+            # Check if bot is currently speaking and user is interrupting
+            is_bot_speaking = bot_app.call_language[call_sid].get('is_bot_speaking', False)
+            
+            if is_bot_speaking and bot_app.call_language[call_sid]['partial_speech_count'] >= 2:
                 current_length = len(partial_result)
                 last_length = len(bot_app.call_language[call_sid].get('last_partial', ''))
                 
                 # If speech is getting longer and more confident, it's an interruption
                 if current_length > last_length and len(partial_result) > 2:
-                    print(f"🛑 Interruption detected! User said: {partial_result}")
+                    print(f"🛑 INTERRUPTION DETECTED! User said: {partial_result}")
                     # Mark for interruption handling
                     bot_app.call_language[call_sid]['interruption_detected'] = True
                     bot_app.call_language[call_sid]['interruption_text'] = partial_result
+                    bot_app.call_language[call_sid]['is_bot_speaking'] = False  # Stop bot speaking
+                    
+                    # Store the interrupted text for processing
+                    bot_app.call_language[call_sid]['interrupted_text'] = partial_result
+                    print(f"🔄 Interruption stored: {partial_result}")
+                    
+                    # Trigger immediate interruption handling by returning a redirect response
+                    # This will immediately stop the current audio and process the interruption
+                    response = VoiceResponse()
+                    ngrok_url = get_ngrok_url()
+                    if ngrok_url:
+                        response.redirect(f"{ngrok_url}/process_speech_realtime?interrupted_text={partial_result}")
+                    else:
+                        response.say("I'm sorry, there was an error processing your interruption.")
+                    return str(response)
         
         return '', 200
+    
+    @bot_app.route('/interrupt', methods=['POST'])
+    def handle_interruption():
+        """Handle interruption by redirecting to process interrupted speech"""
+        call_sid = request.form.get('CallSid')
+        
+        if call_sid and call_sid in bot_app.call_language:
+            interrupted_text = bot_app.call_language[call_sid].get('interrupted_text', '')
+            if interrupted_text:
+                print(f"🛑 Handling interruption for call {call_sid}: {interrupted_text}")
+                
+                # Create a response that immediately processes the interrupted speech
+                response = VoiceResponse()
+                
+                # Stop any current audio and immediately process the interruption
+                response.say("", voice='Polly.Joanna')  # Empty say to stop current audio
+                
+                # Redirect to process the interrupted speech
+                ngrok_url = get_ngrok_url()
+                if ngrok_url:
+                    response.redirect(f"{ngrok_url}/process_speech_realtime?interrupted_text={interrupted_text}")
+                else:
+                    response.say("I'm sorry, there was an error processing your interruption.")
+                
+                return str(response)
+        
+        # Fallback response
+        response = VoiceResponse()
+        response.say("I didn't catch that. Please try again.")
+        return str(response)
     
     @bot_app.route('/audio/<filename>')
     def serve_audio(filename):

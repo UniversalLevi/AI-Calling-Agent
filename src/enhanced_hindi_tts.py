@@ -219,9 +219,10 @@ class EnhancedHindiTTS:
             return None
     
     def _optimize_text_for_tts(self, text: str) -> str:
-        """Optimize text for better TTS pronunciation, especially for Hinglish"""
-        # Replace common Hindi-English mixed words with better pronunciation
+        """Optimize text for better TTS pronunciation, especially for Hindi/Hinglish"""
+        # Comprehensive Hindi to Romanized transliteration for better TTS
         replacements = {
+            # Basic pronouns and common words
             'नमस्ते': 'Namaste',
             'हैं': 'hain',
             'है': 'hai',
@@ -259,12 +260,161 @@ class EnhancedHindiTTS:
             'हमारे': 'hamare',
             'उनका': 'unka',
             'उनकी': 'unki',
-            'उनके': 'unke'
+            'उनके': 'unke',
+            
+            # Common verbs and actions
+            'जाना': 'jana',
+            'आना': 'aana',
+            'करना': 'karna',
+            'होना': 'hona',
+            'देना': 'dena',
+            'लेना': 'lena',
+            'बोलना': 'bolna',
+            'सुनना': 'sunna',
+            'देखना': 'dekhna',
+            'समझना': 'samajhna',
+            'चाहिए': 'chahiye',
+            'चाहता': 'chahta',
+            'चाहती': 'chahti',
+            'पसंद': 'pasand',
+            'अच्छा': 'accha',
+            'बुरा': 'bura',
+            'ठीक': 'theek',
+            
+            # Places and locations
+            'जयपुर': 'Jaipur',
+            'दिल्ली': 'Delhi',
+            'मुंबई': 'Mumbai',
+            'बैंगलोर': 'Bangalore',
+            'चेन्नई': 'Chennai',
+            'कोलकाता': 'Kolkata',
+            'हैदराबाद': 'Hyderabad',
+            'पुणे': 'Pune',
+            'अहमदाबाद': 'Ahmedabad',
+            'राजस्थान': 'Rajasthan',
+            'महाराष्ट्र': 'Maharashtra',
+            'कर्नाटक': 'Karnataka',
+            'तमिलनाडु': 'Tamil Nadu',
+            'पश्चिम बंगाल': 'West Bengal',
+            
+            # Food and restaurants
+            'रेस्टोरेंट': 'restaurant',
+            'होटल': 'hotel',
+            'खाना': 'khana',
+            'पानी': 'pani',
+            'चाय': 'chai',
+            'कॉफी': 'coffee',
+            'दूध': 'doodh',
+            'रोटी': 'roti',
+            'चावल': 'chawal',
+            'दाल': 'dal',
+            'सब्जी': 'sabzi',
+            'मांस': 'maans',
+            'मछली': 'machhli',
+            'अंडा': 'anda',
+            
+            # Numbers and money
+            'एक': 'ek',
+            'दो': 'do',
+            'तीन': 'teen',
+            'चार': 'chaar',
+            'पांच': 'paanch',
+            'छह': 'chhah',
+            'सात': 'saat',
+            'आठ': 'aath',
+            'नौ': 'nau',
+            'दस': 'das',
+            'बीस': 'bees',
+            'तीस': 'tees',
+            'चालीस': 'chaalis',
+            'पचास': 'pachaas',
+            'साठ': 'saath',
+            'सत्तर': 'sattar',
+            'अस्सी': 'assi',
+            'नब्बे': 'nabbe',
+            'सौ': 'sau',
+            'हज़ार': 'hazaar',
+            'लाख': 'laakh',
+            'करोड़': 'karod',
+            'रुपए': 'rupaye',
+            'रुपया': 'rupya',
+            
+            # Time and dates
+            'आज': 'aaj',
+            'कल': 'kal',
+            'परसों': 'parson',
+            'सुबह': 'subah',
+            'दोपहर': 'dopahar',
+            'शाम': 'shaam',
+            'रात': 'raat',
+            'सोमवार': 'somvaar',
+            'मंगलवार': 'mangalvaar',
+            'बुधवार': 'budhvaar',
+            'गुरुवार': 'guruvaar',
+            'शुक्रवार': 'shukravaar',
+            'शनिवार': 'shanivaar',
+            'रविवार': 'ravivaar',
+            
+            # Common phrases
+            'धन्यवाद': 'dhanyawad',
+            'शुक्रिया': 'shukriya',
+            'माफ़ करें': 'maaf karein',
+            'क्षमा करें': 'kshama karein',
+            'हाँ': 'haan',
+            'नहीं': 'nahi',
+            'हो सकता है': 'ho sakta hai',
+            'ज़रूर': 'zaroor',
+            'बिल्कुल': 'bilkul',
+            'शायद': 'shayad',
+            'कभी नहीं': 'kabhi nahi',
+            'हमेशा': 'hamesha',
+            'कभी-कभी': 'kabhi-kabhi',
+            
+            # Business and travel terms
+            'बुकिंग': 'booking',
+            'रिजर्वेशन': 'reservation',
+            'टिकट': 'ticket',
+            'यात्रा': 'yatra',
+            'घूमना': 'ghoomna',
+            'देखना': 'dekhna',
+            'मिलना': 'milna',
+            'बात करना': 'baat karna',
+            'सहायता': 'sahayata',
+            'मदद': 'madad',
+            'जानकारी': 'jankari',
+            'सुझाव': 'sujhaav',
+            'प्लान': 'plan',
+            'प्रोग्राम': 'program',
+            
+            # Technology terms
+            'इंटरनेट': 'internet',
+            'वाईफाई': 'WiFi',
+            'मोबाइल': 'mobile',
+            'फोन': 'phone',
+            'कंप्यूटर': 'computer',
+            'लैपटॉप': 'laptop',
+            'टैबलेट': 'tablet',
+            'ऐप': 'app',
+            'वेबसाइट': 'website',
+            'ईमेल': 'email',
+            'पासवर्ड': 'password',
+            'लॉगिन': 'login',
+            'साइन अप': 'sign up',
+            'डाउनलोड': 'download',
+            'अपलोड': 'upload',
+            
+            # Remove "Sara:" prefix if present
+            'Sara: ': '',
+            'Sara:': ''
         }
         
         optimized_text = text
-        for hindi, english in replacements.items():
-            optimized_text = optimized_text.replace(hindi, english)
+        for hindi, romanized in replacements.items():
+            optimized_text = optimized_text.replace(hindi, romanized)
+        
+        # Additional cleanup for better pronunciation
+        optimized_text = optimized_text.replace('  ', ' ')  # Remove double spaces
+        optimized_text = optimized_text.strip()  # Remove leading/trailing spaces
         
         return optimized_text
     
