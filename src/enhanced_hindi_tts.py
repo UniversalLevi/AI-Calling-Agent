@@ -8,6 +8,7 @@ This module provides high-quality Hindi text-to-speech using multiple providers.
 import os
 import tempfile
 import time
+import glob
 from pathlib import Path
 from typing import Optional
 
@@ -23,30 +24,74 @@ class EnhancedHindiTTS:
     def __init__(self):
         self.providers = []
         self._initialize_providers()
+        self._cleanup_old_audio_files()
     
     def _initialize_providers(self):
-        """Initialize available TTS providers in order of preference"""
+        """Initialize available TTS providers based on .env configuration"""
         
-        # 1. Try Azure Cognitive Services (Best Hindi quality)
-        if self._check_azure_credentials():
+        # Get preferred TTS provider from .env
+        preferred_provider = os.getenv('TTS_PROVIDER', 'twilio').lower()
+        print(f"🎯 Preferred TTS provider from .env: {preferred_provider}")
+        
+        # Add preferred provider first if available
+        if preferred_provider == 'azure' and self._check_azure_credentials():
             self.providers.append('azure')
-            print("🔊 Azure TTS available (Best Hindi quality)")
-        
-        # 2. Try Google Cloud TTS (Good Hindi quality)
-        if self._check_google_credentials():
+            print("🔊 Azure TTS available (Preferred)")
+        elif preferred_provider == 'google' and self._check_google_credentials():
             self.providers.append('google')
-            print("🔊 Google Cloud TTS available (Good Hindi quality)")
-        
-        # 3. Try ElevenLabs (Good for cloned voices)
-        if self._check_elevenlabs_credentials():
+            print("🔊 Google Cloud TTS available (Preferred)")
+        elif preferred_provider == 'elevenlabs' and self._check_elevenlabs_credentials():
             self.providers.append('elevenlabs')
-            print("🔊 ElevenLabs TTS available")
+            print("🔊 ElevenLabs TTS available (Preferred)")
+        elif preferred_provider == 'openai' and self._check_openai_credentials():
+            self.providers.append('openai')
+            print("🔊 OpenAI TTS available (Preferred)")
         
-        # 4. Always have gTTS as fallback (Basic Hindi quality)
+        # Add other available providers as fallbacks
+        if 'azure' not in self.providers and self._check_azure_credentials():
+            self.providers.append('azure')
+            print("🔊 Azure TTS available (Fallback)")
+        
+        if 'google' not in self.providers and self._check_google_credentials():
+            self.providers.append('google')
+            print("🔊 Google Cloud TTS available (Fallback)")
+        
+        if 'elevenlabs' not in self.providers and self._check_elevenlabs_credentials():
+            self.providers.append('elevenlabs')
+            print("🔊 ElevenLabs TTS available (Fallback)")
+        
+        if 'openai' not in self.providers and self._check_openai_credentials():
+            self.providers.append('openai')
+            print("🔊 OpenAI TTS available (Fallback)")
+        
+        # Always have gTTS as final fallback
         self.providers.append('gtts')
-        print("🔊 gTTS available (Fallback Hindi)")
+        print("🔊 gTTS available (Final Fallback)")
         
         print(f"🎤 Hindi TTS providers available: {len(self.providers)}")
+    
+    def _cleanup_old_audio_files(self):
+        """Clean up old audio files to save space"""
+        try:
+            audio_dir = Path("audio_files")
+            if not audio_dir.exists():
+                return
+            
+            # Delete files older than 1 hour (3600 seconds)
+            current_time = time.time()
+            max_age = 3600  # 1 hour
+            
+            deleted_count = 0
+            for file_path in audio_dir.glob("*.mp3"):
+                if current_time - file_path.stat().st_mtime > max_age:
+                    file_path.unlink()
+                    deleted_count += 1
+            
+            if deleted_count > 0:
+                print(f"🧹 Cleaned up {deleted_count} old audio files")
+                
+        except Exception as e:
+            print(f"⚠️ Audio cleanup error: {e}")
     
     def _check_azure_credentials(self) -> bool:
         """Check if Azure credentials are available"""
@@ -59,6 +104,10 @@ class EnhancedHindiTTS:
     def _check_elevenlabs_credentials(self) -> bool:
         """Check if ElevenLabs credentials are available"""
         return bool(os.getenv('ELEVENLABS_API_KEY') and os.getenv('ELEVENLABS_VOICE_ID'))
+    
+    def _check_openai_credentials(self) -> bool:
+        """Check if OpenAI credentials are available"""
+        return bool(os.getenv('OPENAI_API_KEY'))
     
     def speak_hindi_azure(self, text: str) -> Optional[str]:
         """Generate Hindi speech using Azure Cognitive Services"""
@@ -214,6 +263,42 @@ class EnhancedHindiTTS:
             print(f"❌ ElevenLabs TTS error: {e}")
             return None
     
+    def speak_hindi_openai(self, text: str) -> Optional[str]:
+        """Generate Hindi speech using OpenAI TTS"""
+        try:
+            import openai
+            
+            api_key = os.getenv('OPENAI_API_KEY')
+            model = os.getenv('OPENAI_TTS_MODEL', 'tts-1')
+            voice = os.getenv('OPENAI_TTS_VOICE', 'alloy')
+            
+            client = openai.OpenAI(api_key=api_key)
+            
+            # Create audio file
+            audio_dir = Path("audio_files")
+            audio_dir.mkdir(exist_ok=True)
+            timestamp = int(time.time() * 1000)
+            audio_file = audio_dir / f"openai_hindi_{timestamp}.mp3"
+            
+            # Generate speech
+            response = client.audio.speech.create(
+                model=model,
+                voice=voice,
+                input=text,
+                speed=1.0  # Normal speed
+            )
+            
+            # Save audio file
+            with open(audio_file, 'wb') as f:
+                f.write(response.content)
+            
+            print(f"🎵 OpenAI Hindi TTS: {audio_file.name}")
+            return audio_file.name
+            
+        except Exception as e:
+            print(f"❌ OpenAI TTS error: {e}")
+            return None
+    
     def speak_hindi_gtts(self, text: str) -> Optional[str]:
         """Generate Hindi speech using gTTS (fallback)"""
         try:
@@ -248,8 +333,24 @@ class EnhancedHindiTTS:
         """
         print(f"🎤 Generating enhanced Hindi TTS for: '{text}'")
         
-        # Try providers in order of quality
-        for provider in self.providers:
+        # Detect if text contains Hindi characters
+        has_hindi = any('\u0900' <= char <= '\u097F' for char in text)
+        
+        # For Hindi/mixed content, prioritize Hindi-optimized providers
+        if has_hindi:
+            print("🔍 Hindi content detected - prioritizing Hindi-optimized providers")
+            # Reorder providers for Hindi content: Azure > Google > ElevenLabs > OpenAI > gTTS
+            hindi_optimized_providers = []
+            for provider in ['azure', 'google', 'elevenlabs', 'openai', 'gtts']:
+                if provider in self.providers:
+                    hindi_optimized_providers.append(provider)
+        else:
+            print("🔍 English content detected - using preferred provider")
+            # For English content, use the preferred provider order
+            hindi_optimized_providers = self.providers
+        
+        # Try providers in optimized order
+        for provider in hindi_optimized_providers:
             try:
                 if provider == 'azure':
                     result = self.speak_hindi_azure(text)
@@ -257,6 +358,8 @@ class EnhancedHindiTTS:
                     result = self.speak_hindi_google(text)
                 elif provider == 'elevenlabs':
                     result = self.speak_hindi_elevenlabs(text)
+                elif provider == 'openai':
+                    result = self.speak_hindi_openai(text)
                 elif provider == 'gtts':
                     result = self.speak_hindi_gtts(text)
                 else:
@@ -264,6 +367,8 @@ class EnhancedHindiTTS:
                 
                 if result:
                     print(f"✅ Enhanced Hindi TTS successful with {provider}")
+                    # Clean up old files after successful generation
+                    self._cleanup_old_audio_files()
                     return result
                     
             except Exception as e:
@@ -291,8 +396,8 @@ class EnhancedHindiTTS:
             # For mixed text, use the best available provider
             return self.speak_enhanced_hindi(text)
         else:
-            # For English, use Twilio TTS (handled by the calling function)
-            return text
+            # For English, also use enhanced TTS
+            return self.speak_enhanced_hindi(text)
 
 
 # Global instance

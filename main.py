@@ -194,14 +194,14 @@ def create_voice_bot_server():
                 # Fallback to Twilio voice
                 response.say(greeting, voice='Polly.Aditi', language='hi-IN')
             
-            # Add natural pause after greeting
-            response.pause(length=0.5)
+                # Add natural pause after greeting
+                response.pause(length=0.2)
             
-            # Use optimized gather settings for better speech recognition
+            # Use optimized gather settings for better speech recognition and interruption
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=8,  # Longer timeout for better recognition
+                timeout=3,  # Shorter timeout for faster interruption detection
                 speech_timeout='auto',
                 language='en-IN',  # Start with English, will switch based on detection
                 partial_result_callback='/partial_speech',
@@ -399,45 +399,24 @@ def create_voice_bot_server():
                             else:
                                 response.say(bot_response, voice='Polly.Joanna', language='en-IN')
                     else:
-                        # Fallback to Twilio voices with interruption support
-                        # Split response into shorter segments for better interruption
-                        words = bot_response.split()
-                        chunk_size = 4  # Smaller chunks for interruption
+                        # Fallback to Twilio voices
+                        if detected_language in ['hi', 'mixed']:
+                            response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
+                        else:
+                            response.say(bot_response, voice='Polly.Joanna', language='en-IN')
                         
-                        for i in range(0, len(words), chunk_size):
-                            chunk = ' '.join(words[i:i + chunk_size])
-                            
-                            if detected_language in ['hi', 'mixed']:
-                                response.say(chunk, voice='Polly.Aditi', language='hi-IN')
-                            else:
-                                response.say(chunk, voice='Polly.Joanna', language='en-IN')
-                            
-                            # Add brief pause between chunks for interruption
-                            if i + chunk_size < len(words):
-                                response.pause(length=0.2)
-                        
-                        print("⚠️ Using Twilio fallback voices with interruption support")
+                        print("⚠️ Using Twilio fallback voices")
                         
                 except Exception as e:
                     print(f"❌ TTS error: {e}")
-                    # Fallback to Twilio voices with interruption support
-                    words = bot_response.split()
-                    chunk_size = 4  # Smaller chunks for interruption
-                    
-                    for i in range(0, len(words), chunk_size):
-                        chunk = ' '.join(words[i:i + chunk_size])
-                        
-                        if detected_language in ['hi', 'mixed']:
-                            response.say(chunk, voice='Polly.Aditi', language='hi-IN')
-                        else:
-                            response.say(chunk, voice='Polly.Joanna', language='en-IN')
-                        
-                        # Add brief pause between chunks for interruption
-                        if i + chunk_size < len(words):
-                            response.pause(length=0.2)
+                    # Fallback to Twilio voices
+                    if detected_language in ['hi', 'mixed']:
+                        response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
+                    else:
+                        response.say(bot_response, voice='Polly.Joanna', language='en-IN')
                 
                 # Add a brief pause after speaking for natural conversation flow
-                response.pause(length=0.5)
+                response.pause(length=0.2)
                 
             except Exception as e:
                 print(f"❌ Real-time processing error: {e}")
@@ -450,11 +429,11 @@ def create_voice_bot_server():
                 print(f"   From: {request.form.get('From', 'None')}")
                 response.say("Sorry, there was an error. Please try again.")
             
-            # Continue with optimized speech recognition
+            # Continue with optimized speech recognition and interruption
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=8,  # Longer timeout for better recognition
+                timeout=3,  # Shorter timeout for faster interruption detection
                 speech_timeout='auto',
                 language='en-IN' if detected_language == 'en' else 'hi-IN',
                 partial_result_callback='/partial_speech',
@@ -464,11 +443,11 @@ def create_voice_bot_server():
             response.append(gather)
             
         else:
-            # No speech detected - optimized recovery
+            # No speech detected - optimized recovery with faster interruption
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=8,  # Longer timeout for better recognition
+                timeout=3,  # Shorter timeout for faster interruption detection
                 language='en-IN',
                 partial_result_callback='/partial_speech',
                 enhanced='true',  # Use enhanced speech recognition
@@ -480,12 +459,13 @@ def create_voice_bot_server():
     
     @bot_app.route('/partial_speech', methods=['POST'])
     def partial_speech():
-        """Handle partial speech results for interruption detection"""
+        """Handle partial speech results for faster interruption detection"""
         partial_result = request.form.get('UnstableSpeechResult', '')
         call_sid = request.form.get('CallSid')
         
-        if partial_result:
+        if partial_result and len(partial_result.strip()) > 0:
             print(f"🎤 Partial speech: {partial_result}")
+            
             # Store partial speech for interruption detection
             if call_sid not in bot_app.call_language:
                 bot_app.call_language[call_sid] = {}
@@ -497,17 +477,17 @@ def create_voice_bot_server():
             bot_app.call_language[call_sid]['partial_speech_count'] += 1
             bot_app.call_language[call_sid]['last_partial'] = partial_result
             
-            # Detect interruption only if we're getting consistent speech
-            # This means the user is speaking while bot should be speaking
-            if bot_app.call_language[call_sid]['partial_speech_count'] > 2:
+            # Faster interruption detection - trigger after just 2 partial results
+            if bot_app.call_language[call_sid]['partial_speech_count'] >= 2:
                 current_length = len(partial_result)
                 last_length = len(bot_app.call_language[call_sid].get('last_partial', ''))
                 
                 # If speech is getting longer and more confident, it's an interruption
-                if current_length > last_length and len(partial_result) > 3:
+                if current_length > last_length and len(partial_result) > 2:
                     print(f"🛑 Interruption detected! User said: {partial_result}")
                     # Mark for interruption handling
                     bot_app.call_language[call_sid]['interruption_detected'] = True
+                    bot_app.call_language[call_sid]['interruption_text'] = partial_result
         
         return '', 200
     
