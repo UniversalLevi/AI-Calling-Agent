@@ -40,9 +40,6 @@ class EnhancedHindiTTS:
         elif preferred_provider == 'google' and self._check_google_credentials():
             self.providers.append('google')
             print("🔊 Google Cloud TTS available (Preferred)")
-        elif preferred_provider == 'elevenlabs' and self._check_elevenlabs_credentials():
-            self.providers.append('elevenlabs')
-            print("🔊 ElevenLabs TTS available (Preferred)")
         elif preferred_provider == 'openai' and self._check_openai_credentials():
             self.providers.append('openai')
             print("🔊 OpenAI TTS available (Preferred)")
@@ -55,10 +52,6 @@ class EnhancedHindiTTS:
         if 'google' not in self.providers and self._check_google_credentials():
             self.providers.append('google')
             print("🔊 Google Cloud TTS available (Fallback)")
-        
-        if 'elevenlabs' not in self.providers and self._check_elevenlabs_credentials():
-            self.providers.append('elevenlabs')
-            print("🔊 ElevenLabs TTS available (Fallback)")
         
         if 'openai' not in self.providers and self._check_openai_credentials():
             self.providers.append('openai')
@@ -77,9 +70,9 @@ class EnhancedHindiTTS:
             if not audio_dir.exists():
                 return
             
-            # Delete files older than 1 hour (3600 seconds)
+            # Delete files older than 5 minutes (300 seconds)
             current_time = time.time()
-            max_age = 3600  # 1 hour
+            max_age = 300  # 5 minutes
             
             deleted_count = 0
             for file_path in audio_dir.glob("*.mp3"):
@@ -88,7 +81,7 @@ class EnhancedHindiTTS:
                     deleted_count += 1
             
             if deleted_count > 0:
-                print(f"🧹 Cleaned up {deleted_count} old audio files")
+                print(f"🧹 Cleaned up {deleted_count} old audio files (older than 5 minutes)")
                 
         except Exception as e:
             print(f"⚠️ Audio cleanup error: {e}")
@@ -100,10 +93,6 @@ class EnhancedHindiTTS:
     def _check_google_credentials(self) -> bool:
         """Check if Google Cloud credentials are available"""
         return bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS') or os.getenv('GOOGLE_CLOUD_TTS_KEY'))
-    
-    def _check_elevenlabs_credentials(self) -> bool:
-        """Check if ElevenLabs credentials are available"""
-        return bool(os.getenv('ELEVENLABS_API_KEY') and os.getenv('ELEVENLABS_VOICE_ID'))
     
     def _check_openai_credentials(self) -> bool:
         """Check if OpenAI credentials are available"""
@@ -187,90 +176,16 @@ class EnhancedHindiTTS:
             print(f"❌ Google TTS error: {e}")
             return None
     
-    def speak_hindi_elevenlabs(self, text: str) -> Optional[str]:
-        """Generate Hindi speech using ElevenLabs"""
-        try:
-            import requests
-            
-            api_key = os.getenv('ELEVENLABS_API_KEY')
-            voice_id = os.getenv('ELEVENLABS_VOICE_ID')
-            
-            # Use a default voice if custom voice fails
-            default_voice_id = "KYiVPerWcenyBTIvWbfY"  # Rachel - good for mixed languages
-            
-            url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-            
-            headers = {
-                "Accept": "audio/mpeg",
-                "Content-Type": "application/json",
-                "xi-api-key": api_key
-            }
-            
-            data = {
-                "text": text,
-                "model_id": "eleven_multilingual_v2",  # Supports Hindi
-                "voice_settings": {
-                    "stability": 0.5,
-                    "similarity_boost": 0.75,
-                    "style": 0.5,
-                    "use_speaker_boost": True
-                }
-            }
-            
-            response = requests.post(url, json=data, headers=headers)
-            
-            if response.status_code == 200:
-                # Save audio file
-                audio_dir = Path("audio_files")
-                audio_dir.mkdir(exist_ok=True)
-                timestamp = int(time.time() * 1000)
-                audio_file = audio_dir / f"elevenlabs_hindi_{timestamp}.mp3"
-                
-                with open(audio_file, 'wb') as f:
-                    f.write(response.content)
-                
-                print(f"🎵 ElevenLabs Hindi TTS: {audio_file.name}")
-                # Return just the filename; the controller will build a public URL
-                return audio_file.name
-            else:
-                print(f"❌ ElevenLabs TTS failed: {response.status_code}")
-                print(f"❌ ElevenLabs error response: {response.text}")
-                
-                # Try with default voice if custom voice fails
-                if "voice_limit_reached" in response.text or "voice_not_found" in response.text:
-                    print("🔄 Trying with default voice...")
-                    url = f"https://api.elevenlabs.io/v1/text-to-speech/{default_voice_id}"
-                    response = requests.post(url, json=data, headers=headers)
-                    
-                    if response.status_code == 200:
-                        audio_dir = Path("audio_files")
-                        audio_dir.mkdir(exist_ok=True)
-                        timestamp = int(time.time() * 1000)
-                        audio_file = audio_dir / f"elevenlabs_default_{timestamp}.mp3"
-                        
-                        with open(audio_file, 'wb') as f:
-                            f.write(response.content)
-                        
-                        print(f"🎵 ElevenLabs Default TTS: {audio_file.name}")
-                        return audio_file.name
-                    else:
-                        print(f"❌ ElevenLabs Default TTS also failed: {response.status_code}")
-                        return None
-                else:
-                    return None
-                
-        except Exception as e:
-            print(f"❌ ElevenLabs TTS error: {e}")
-            return None
-    
     def speak_hindi_openai(self, text: str) -> Optional[str]:
-        """Generate Hindi speech using OpenAI TTS"""
+        """Generate speech using OpenAI TTS with Sara's female voice"""
         try:
             import openai
             
             api_key = os.getenv('OPENAI_API_KEY')
             model = os.getenv('OPENAI_TTS_MODEL', 'tts-1')
-            voice = os.getenv('OPENAI_TTS_VOICE', 'alloy')
+            
+            # Use female voice for Sara
+            voice = os.getenv('OPENAI_TTS_VOICE', 'nova')  # Nova is a female voice
             
             client = openai.OpenAI(api_key=api_key)
             
@@ -278,26 +193,80 @@ class EnhancedHindiTTS:
             audio_dir = Path("audio_files")
             audio_dir.mkdir(exist_ok=True)
             timestamp = int(time.time() * 1000)
-            audio_file = audio_dir / f"openai_hindi_{timestamp}.mp3"
+            audio_file = audio_dir / f"sara_voice_{timestamp}.mp3"
             
-            # Generate speech
+            # Optimize text for better Hinglish pronunciation
+            optimized_text = self._optimize_text_for_tts(text)
+            
+            # Generate speech with optimized settings
             response = client.audio.speech.create(
                 model=model,
                 voice=voice,
-                input=text,
-                speed=1.0  # Normal speed
+                input=optimized_text,
+                speed=1.0,  # Normal speed for natural speech
+                response_format="mp3"
             )
             
             # Save audio file
             with open(audio_file, 'wb') as f:
                 f.write(response.content)
             
-            print(f"🎵 OpenAI Hindi TTS: {audio_file.name}")
+            print(f"🎵 Sara's Voice (OpenAI): {audio_file.name}")
             return audio_file.name
             
         except Exception as e:
             print(f"❌ OpenAI TTS error: {e}")
             return None
+    
+    def _optimize_text_for_tts(self, text: str) -> str:
+        """Optimize text for better TTS pronunciation, especially for Hinglish"""
+        # Replace common Hindi-English mixed words with better pronunciation
+        replacements = {
+            'नमस्ते': 'Namaste',
+            'हैं': 'hain',
+            'है': 'hai',
+            'मैं': 'main',
+            'आप': 'aap',
+            'कैसे': 'kaise',
+            'क्या': 'kya',
+            'कहाँ': 'kahan',
+            'कब': 'kab',
+            'क्यों': 'kyun',
+            'कितना': 'kitna',
+            'कौन': 'kaun',
+            'कौन सा': 'kaun sa',
+            'कौन सी': 'kaun si',
+            'कौन से': 'kaun se',
+            'मुझे': 'mujhe',
+            'तुम्हें': 'tumhe',
+            'आपको': 'aapko',
+            'हमें': 'hamein',
+            'उन्हें': 'unhein',
+            'इस': 'is',
+            'उस': 'us',
+            'यह': 'yah',
+            'वह': 'vah',
+            'ये': 'ye',
+            'वे': 've',
+            'मेरा': 'mera',
+            'मेरी': 'meri',
+            'मेरे': 'mere',
+            'आपका': 'aapka',
+            'आपकी': 'aapki',
+            'आपके': 'aapke',
+            'हमारा': 'hamara',
+            'हमारी': 'hamari',
+            'हमारे': 'hamare',
+            'उनका': 'unka',
+            'उनकी': 'unki',
+            'उनके': 'unke'
+        }
+        
+        optimized_text = text
+        for hindi, english in replacements.items():
+            optimized_text = optimized_text.replace(hindi, english)
+        
+        return optimized_text
     
     def speak_hindi_gtts(self, text: str) -> Optional[str]:
         """Generate Hindi speech using gTTS (fallback)"""
@@ -339,9 +308,9 @@ class EnhancedHindiTTS:
         # For Hindi/mixed content, prioritize Hindi-optimized providers
         if has_hindi:
             print("🔍 Hindi content detected - prioritizing Hindi-optimized providers")
-            # Reorder providers for Hindi content: Azure > Google > ElevenLabs > OpenAI > gTTS
+            # Reorder providers for Hindi content: Azure > Google > OpenAI > gTTS
             hindi_optimized_providers = []
-            for provider in ['azure', 'google', 'elevenlabs', 'openai', 'gtts']:
+            for provider in ['azure', 'google', 'openai', 'gtts']:
                 if provider in self.providers:
                     hindi_optimized_providers.append(provider)
         else:
@@ -356,8 +325,6 @@ class EnhancedHindiTTS:
                     result = self.speak_hindi_azure(text)
                 elif provider == 'google':
                     result = self.speak_hindi_google(text)
-                elif provider == 'elevenlabs':
-                    result = self.speak_hindi_elevenlabs(text)
                 elif provider == 'openai':
                     result = self.speak_hindi_openai(text)
                 elif provider == 'gtts':

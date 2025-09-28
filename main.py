@@ -34,6 +34,36 @@ except ImportError:
     print("⚠️ python-dotenv not installed. Install with: pip install python-dotenv")
     print("⚠️ Environment variables not loaded from .env file")
 
+# Clean up old audio files on startup
+def cleanup_startup_audio():
+    """Clean up old audio files on startup"""
+    try:
+        import time
+        audio_dir = Path("audio_files")
+        if not audio_dir.exists():
+            return
+        
+        # Delete files older than 5 minutes (300 seconds)
+        current_time = time.time()
+        max_age = 300  # 5 minutes
+        
+        deleted_count = 0
+        for file_path in audio_dir.glob("*.mp3"):
+            if current_time - file_path.stat().st_mtime > max_age:
+                file_path.unlink()
+                deleted_count += 1
+        
+        if deleted_count > 0:
+            print(f"🧹 Startup cleanup: Removed {deleted_count} old audio files (older than 5 minutes)")
+        else:
+            print("🧹 Startup cleanup: No old audio files to remove")
+            
+    except Exception as e:
+        print(f"⚠️ Startup cleanup error: {e}")
+
+# Run startup cleanup
+cleanup_startup_audio()
+
 # Suppress warnings for cleaner output
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -156,6 +186,8 @@ def create_voice_bot_server():
         caller = request.form.get('From', 'Unknown')
         call_sid = request.form.get('CallSid')
         print(f"📞 Incoming call from: {caller}")
+        print(f"🔍 DEBUG: Request form data: {dict(request.form)}")
+        print(f"🔍 DEBUG: Request args: {dict(request.args)}")
         
         # Check if realtime mode is available and requested
         realtime_mode = request.args.get('realtime', 'false').lower() == 'true'
@@ -167,7 +199,7 @@ def create_voice_bot_server():
             print("🚀 Starting realtime conversation mode")
             
             # Send natural female greeting using enhanced TTS
-            greeting = "Hi there! नमस्ते! I'm Priya, your AI assistant. How can I help you today?"
+            greeting = "Hi there!, I am Sara. How can I help you today?"
             
             try:
                 from src.enhanced_hindi_tts import speak_mixed_enhanced
@@ -201,14 +233,19 @@ def create_voice_bot_server():
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=3,  # Shorter timeout for faster interruption detection
+                timeout=5,  # Increased timeout to allow more time for speech
                 speech_timeout='auto',
                 language='en-IN',  # Start with English, will switch based on detection
                 partial_result_callback='/partial_speech',
                 enhanced='true',  # Use enhanced speech recognition
-                profanity_filter='false'  # Don't filter speech
+                profanity_filter='false',  # Don't filter speech
+                num_digits=0,  # Don't expect digits
+                finish_on_key='#'  # Allow finishing with # key
             )
             response.append(gather)
+            
+            # Add a fallback message if no speech is detected
+            response.say("I didn't hear anything. Please try again.", voice='Polly.Joanna', language='en-IN')
             
             # Initialize realtime voice bot for this call
             global realtime_voice_bot, twilio_realtime_integration
@@ -337,12 +374,16 @@ def create_voice_bot_server():
     @bot_app.route('/process_speech_realtime', methods=['POST'])
     def process_speech_realtime():
         """Enhanced real-time speech processing with interruption handling"""
+        print(f"🔍 DEBUG: process_speech_realtime called")
+        print(f"🔍 DEBUG: Request form data: {dict(request.form)}")
+        print(f"🔍 DEBUG: Request args: {dict(request.args)}")
         response = VoiceResponse()
         speech_result = request.form.get('SpeechResult', '')
         caller = request.form.get('From', 'Unknown')
         call_sid = request.form.get('CallSid')
         
         print(f"⚡ Real-time caller {caller} said: {speech_result}")
+        print(f"🔍 DEBUG: bot_app.gpt exists: {bot_app.gpt is not None}")
         
         # Check for interruption
         interruption_detected = False
@@ -359,6 +400,9 @@ def create_voice_bot_server():
                 detected_language = detect_language(speech_result)
                 print(f"🌐 Language: {detected_language}")
                 
+                # Initialize bot_response
+                bot_response = ""
+                
                 # Store language for this call
                 if call_sid:
                     if isinstance(bot_app.call_language.get(call_sid), dict):
@@ -366,18 +410,44 @@ def create_voice_bot_server():
                     else:
                         bot_app.call_language[call_sid] = detected_language
                 
-                # Fast AI processing with natural female responses
+                # Fast AI processing with Sara's natural female responses
+                print(f"🔍 DEBUG: About to check bot_app.gpt: {bot_app.gpt}")
                 if bot_app.gpt:
-                    # Add context for more natural female responses
-                    enhanced_prompt = f"You are a helpful female AI assistant. Respond naturally and conversationally in {detected_language}. Be warm, friendly, and helpful. Keep responses concise but natural."
-                    bot_response = bot_app.gpt.ask(f"{enhanced_prompt}\n\nUser: {speech_result}", detected_language)
-                    print(f"⚡ Natural AI response ({detected_language}): {bot_response}")
+                    # Check for inappropriate content first
+                    from src.language_detector import detect_inappropriate_content, get_appropriate_response
+                    
+                    if detect_inappropriate_content(speech_result):
+                        print(f"⚠️ Inappropriate content detected from {caller}")
+                        bot_response = get_appropriate_response(detected_language)
+                    else:
+                        # Add context for Sara's natural female responses
+                        enhanced_prompt = f"You are Sara, a helpful female AI assistant. Respond naturally and conversationally in {detected_language}. Be warm, friendly, and helpful. Keep responses concise but natural. Always maintain a professional and respectful tone."
+                        print(f"🔍 Calling AI with prompt: {enhanced_prompt[:100]}...")
+                        print(f"🔍 User input: {speech_result}")
+                        bot_response = bot_app.gpt.ask(f"{enhanced_prompt}\n\nUser: {speech_result}", detected_language)
+                        print(f"⚡ Sara's natural response ({detected_language}): '{bot_response}'")
+                        print(f"🔍 Response type: {type(bot_response)}")
+                        print(f"🔍 Response length: {len(bot_response) if bot_response else 0}")
                 else:
-                    # Quick fallback with natural responses
+                    # Quick fallback with Sara's responses
                     if detected_language == 'hi':
                         bot_response = f"हाँ, मैं समझ गई। {speech_result}"
                     else:
                         bot_response = f"Yes, I understand. {speech_result}"
+                
+                # Ensure we have a valid response (this runs regardless of AI provider)
+                print(f"🔍 Validating response: '{bot_response}'")
+                print(f"🔍 Validation check - not bot_response: {not bot_response}")
+                print(f"🔍 Validation check - strip empty: {bot_response.strip() == '' if bot_response else 'N/A'}")
+                if not bot_response or bot_response.strip() == "":
+                    print(f"⚠️ Empty response detected, using fallback")
+                    if detected_language == 'hi':
+                        bot_response = "मैं आपकी बात समझ गई हूँ। क्या मैं आपकी और मदद कर सकती हूँ?"
+                    else:
+                        bot_response = "I understand what you're saying. How else can I help you today?"
+                    print(f"✅ Fallback response set: '{bot_response}'")
+                else:
+                    print(f"✅ Response is valid: '{bot_response}'")
                 
                 # Use enhanced TTS with consistent voice and interruption support
                 try:

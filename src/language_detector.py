@@ -68,7 +68,7 @@ def detect_language(text: str) -> str:
 
 def get_language_prompt(language: str) -> str:
     """
-    Get appropriate system prompt based on detected language.
+    Get appropriate system prompt based on detected language for Sara.
     
     Args:
         language: Language code ('hi', 'en', 'mixed')
@@ -77,26 +77,92 @@ def get_language_prompt(language: str) -> str:
         System prompt text
     """
     prompts = {
-        'hi': """आप प्रिया हैं, एक दोस्ताना और मददगार AI असिस्टेंट। आप रेस्टोरेंट बुकिंग, होटल रिजर्वेशन और सामान्य प्रश्नों में मदद कर सकती हैं। गर्मजोशी से और प्राकृतिक तरीके से बात करें। हिंदी में जवाब दें और अपने आप को 'मैं' कहें।""",
+        'hi': """आप सारा हैं, एक दोस्ताना और मददगार महिला AI असिस्टेंट। आप रेस्टोरेंट बुकिंग, होटल रिजर्वेशन और सामान्य प्रश्नों में मदद कर सकती हैं। गर्मजोशी से और प्राकृतिक तरीके से बात करें। हिंदी में जवाब दें और अपने आप को 'मैं' कहें। अगर कोई अश्लील या अनुचित बात करे तो विनम्रता से मना करें और सहायता की पेशकश करें।""",
         
-        'en': """You are Priya, a friendly and helpful female AI assistant. You can help with:
+        'en': """You are Sara, a friendly and helpful female AI assistant. You can help with:
 - Restaurant bookings and recommendations
 - Hotel reservations and travel planning
 - General questions and conversations
 - Booking assistance and guidance
 
-Be warm, friendly, and conversational. Speak naturally as a helpful female assistant. If you can't make direct bookings, guide users on how to do it themselves.""",
+Be warm, friendly, and conversational. Speak naturally as a helpful female assistant. If someone uses inappropriate language or makes inappropriate requests, politely decline and offer to help with appropriate topics instead. Always maintain a professional and respectful tone.""",
         
-        'mixed': """You are Priya, a friendly and helpful female AI assistant. You can help with:
+        'mixed': """You are Sara, a friendly and helpful female AI assistant. You can help with:
 - Restaurant bookings and recommendations
 - Hotel reservations and travel planning
 - General questions and conversations
 - Booking assistance and guidance
 
-Be warm, friendly, and conversational. Respond in the same language as the user (Hindi or English). Speak naturally as a helpful female assistant. If you can't make direct bookings, guide users on how to do it themselves."""
+Be warm, friendly, and conversational. Respond in the same language as the user (Hindi or English). Speak naturally as a helpful female assistant. If someone uses inappropriate language or makes inappropriate requests, politely decline and offer to help with appropriate topics instead. Always maintain a professional and respectful tone."""
     }
     
     return prompts.get(language, prompts['en'])
+
+def detect_inappropriate_content(text: str) -> bool:
+    """
+    Detect if text contains inappropriate or offensive content.
+    
+    Args:
+        text: Input text to analyze
+        
+    Returns:
+        True if inappropriate content detected, False otherwise
+    """
+    if not text or not text.strip():
+        return False
+    
+    # Convert to lowercase for case-insensitive matching
+    lower_text = text.lower().strip()
+    
+    # List of inappropriate words/phrases (both English and Hindi)
+    inappropriate_words = [
+        # English inappropriate words
+        'fuck', 'shit', 'damn', 'bitch', 'asshole', 'bastard', 'piss', 'crap',
+        'hell', 'bloody', 'stupid', 'idiot', 'moron', 'retard', 'gay', 'fag',
+        'whore', 'slut', 'prostitute', 'sex', 'porn', 'nude', 'naked',
+        'kill', 'murder', 'suicide', 'die', 'death', 'hate', 'violence',
+        'drug', 'cocaine', 'heroin', 'marijuana', 'weed', 'alcohol',
+        'rape', 'molest', 'abuse', 'harass', 'threat', 'blackmail',
+        
+        # Hindi inappropriate words (transliterated)
+        'chutiya', 'bhosdike', 'madarchod', 'behenchod', 'lund', 'chut',
+        'gaand', 'bhenchod', 'maa ki', 'teri maa', 'saala', 'saali',
+        'randi', 'raand', 'kutiya', 'kutta', 'kamina', 'harami',
+        'chakka', 'hijra', 'napunsak', 'murda', 'kutta', 'kutte',
+        'machod', 'bhenchod', 'behenchod', 'madarchod', 'bhosdike',
+        'chutiya', 'chut', 'lund', 'gaand', 'saala', 'saali'
+    ]
+    
+    # Check for inappropriate words (exact word matches only)
+    words_in_text = lower_text.split()
+    inappropriate_found = False
+    
+    for word in inappropriate_words:
+        if word in words_in_text:  # Only exact word matches
+            inappropriate_found = True
+            break
+    
+    return inappropriate_found
+
+def get_appropriate_response(language: str) -> str:
+    """
+    Get appropriate response for inappropriate content based on language.
+    
+    Args:
+        language: Language code ('hi', 'en', 'mixed')
+        
+    Returns:
+        Appropriate response text
+    """
+    responses = {
+        'hi': "मैं आपकी मदद करने के लिए यहाँ हूँ, लेकिन कृपया उचित भाषा का प्रयोग करें। मैं आपके साथ सम्मानजनक तरीके से बात करना चाहती हूँ। क्या मैं आपकी किसी अन्य तरीके से मदद कर सकती हूँ?",
+        
+        'en': "I'm here to help you, but please use appropriate language. I'd like to have a respectful conversation with you. Is there something else I can help you with?",
+        
+        'mixed': "I'm here to help you, but please use appropriate language. I'd like to have a respectful conversation with you. Is there something else I can help you with?"
+    }
+    
+    return responses.get(language, responses['en'])
 
 def get_tts_voice(language: str) -> str:
     """

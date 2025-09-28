@@ -1,16 +1,31 @@
-# 🤖 AI Calling Bot - Hindi & English Voice Assistant
+# 🤖 Sara - AI Calling Bot | Hindi & English Voice Assistant
 
-A complete AI-powered voice bot that can make and receive phone calls with native support for **Hindi, English, and Hinglish** (mixed language) conversations.
+Meet **Sara**, your intelligent AI voice assistant that can make and receive phone calls with native support for **Hindi, English, and Hinglish** (mixed language) conversations. Sara is designed to be a helpful, professional, and respectful female AI assistant.
 
 ## 🌟 Features
 
+- **👩 Sara's Voice** - Professional female AI assistant with consistent voice across all languages
 - **📞 Real Phone Calls** - Make and receive actual phone calls via Twilio
 - **🌐 Multilingual Support** - Hindi, English, and mixed language conversations
 - **🧠 AI-Powered** - Uses OpenAI GPT-4o-mini for intelligent responses
 - **🎤 Advanced Speech Recognition** - Faster-Whisper with language auto-detection
-- **🗣️ High-Quality Text-to-Speech** - Multiple TTS providers (Azure, Google, ElevenLabs, gTTS)
+- **🗣️ High-Quality Text-to-Speech** - OpenAI TTS with Sara's female voice
 - **🔄 Language Detection** - Automatically detects and switches between languages
+- **🛡️ Content Filtering** - Handles inappropriate content professionally
+- **⚡ Real-time Interruption** - Fast interruption detection for natural conversations
+- **🧹 Auto Cleanup** - Automatic audio file cleanup to save space
 - **🎯 One-Click Setup** - Single command to start everything
+
+## 👩 About Sara
+
+Sara is designed to be your helpful AI assistant with the following characteristics:
+
+- **Professional & Respectful**: Always maintains a professional tone and handles inappropriate content gracefully
+- **Multilingual**: Fluent in Hindi, English, and Hinglish with natural language switching
+- **Consistent Voice**: Uses OpenAI's Nova voice (female) across all languages for consistency
+- **Smart Content Filtering**: Automatically detects and responds appropriately to inappropriate content
+- **Fast Response**: Optimized for real-time conversations with quick interruption detection
+- **Memory Efficient**: Automatically cleans up audio files to save storage space
 
 ## 🚀 Quick Start
 
@@ -37,17 +52,20 @@ TWILIO_ACCOUNT_SID=your_twilio_account_sid
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
 TWILIO_PHONE_NUMBER=+1234567890
 
-# Optional - Enhanced Hindi TTS (choose one or more)
+# TTS Provider Selection
+TTS_PROVIDER=openai
+
+# OpenAI TTS Configuration (Sara's Voice)
+OPENAI_TTS_MODEL=tts-1
+OPENAI_TTS_VOICE=nova
+
+# Optional - Enhanced Hindi TTS (fallbacks)
 # Azure Cognitive Services (Best Hindi quality)
 AZURE_SPEECH_KEY=your_azure_speech_key
 AZURE_SPEECH_REGION=your_region
 
 # Google Cloud TTS (Very good Hindi quality)
 GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
-
-# ElevenLabs (Good for custom voices)
-ELEVENLABS_API_KEY=your_elevenlabs_key
-ELEVENLABS_VOICE_ID=your_voice_id
 
 # Optional - Gemini AI (alternative to OpenAI)
 GEMINI_API_KEY=your_gemini_api_key
