@@ -26,3 +26,7 @@ asyncio-mqtt==0.16.1
 pyaudio==0.2.14
 wave==0.0.2
 
+# Hinglish transliteration and text processing
+indic-transliteration==2.3.75
+regex==2025.9.18
+

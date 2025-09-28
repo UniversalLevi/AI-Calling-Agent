@@ -219,8 +219,31 @@ class EnhancedHindiTTS:
             return None
     
     def _optimize_text_for_tts(self, text: str) -> str:
-        """Optimize text for better TTS pronunciation, especially for Hinglish"""
-        # Replace common Hindi-English mixed words with better pronunciation
+        """Optimize text for better TTS pronunciation using advanced Hinglish transliteration"""
+        try:
+            # Import the advanced Hinglish transliterator
+            from .hinglish_transliterator import optimize_text_for_sara_tts, detect_language
+            
+            # Detect language to determine optimization strategy
+            detected_language = detect_language(text)
+            
+            # Apply Sara-specific TTS optimization
+            optimized_text = optimize_text_for_sara_tts(text, detected_language)
+            
+            print(f"🔍 Text optimization: '{text[:50]}...' -> '{optimized_text[:50]}...'")
+            return optimized_text
+            
+        except ImportError as e:
+            print(f"⚠️ Hinglish transliterator not available, using fallback: {e}")
+            # Fallback to simple replacements if advanced module not available
+            return self._fallback_text_optimization(text)
+        except Exception as e:
+            print(f"⚠️ Text optimization error, using fallback: {e}")
+            return self._fallback_text_optimization(text)
+    
+    def _fallback_text_optimization(self, text: str) -> str:
+        """Fallback text optimization when advanced transliterator is not available"""
+        # Basic replacements for common Hindi words
         replacements = {
             'नमस्ते': 'Namaste',
             'हैं': 'hain',
