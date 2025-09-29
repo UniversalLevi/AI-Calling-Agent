@@ -84,6 +84,16 @@ except ImportError as e:
     REALTIME_AVAILABLE = False
     print(f"⚠️ Realtime voice capabilities not available: {e}")
 
+# Import Media Streams system
+try:
+    from src.twilio_media_streams import start_media_streams_server, get_media_streams_server, speak_text_async
+    from src.tts_adapter import get_tts_provider, get_stt_callback
+    MEDIA_STREAMS_AVAILABLE = True
+    print("✅ Media Streams system available")
+except ImportError as e:
+    MEDIA_STREAMS_AVAILABLE = False
+    print(f"⚠️ Media Streams not available: {e}")
+
 # Global variables
 voice_bot_app = None
 audio_server_app = None
@@ -198,42 +208,30 @@ def create_voice_bot_server():
             # Use enhanced real-time conversation with shorter timeouts
             print("🚀 Starting realtime conversation mode")
             
-            # Send natural female greeting using enhanced TTS
-            greeting = "Hi there!, I am Sara. How can I help you today?"
+            # Send chunked greeting for better interruption handling
+            greeting_parts = [
+                "Hi there!",
+                "I am Sara.",
+                "How can I help you today?"
+            ]
             
-            try:
-                from src.enhanced_hindi_tts import speak_mixed_enhanced
-                
-                # Generate greeting audio using available TTS providers
-                audio_file = speak_mixed_enhanced(greeting)
-                
-                if audio_file and audio_file.endswith('.mp3'):
-                    # Play the generated audio file
-                    ngrok_url = get_ngrok_url()
-                    if ngrok_url:
-                        response.play(f"{ngrok_url}/audio/{audio_file}")
-                        print(f"🎵 Playing TTS greeting: {audio_file}")
-                    else:
-                        print("❌ Ngrok URL not available, using Twilio fallback")
-                        response.say(greeting, voice='Polly.Aditi', language='hi-IN')
-                else:
-                    # Fallback to Twilio voice
-                    response.say(greeting, voice='Polly.Aditi', language='hi-IN')
-                    print("⚠️ Using Twilio fallback for greeting")
-                    
-            except Exception as e:
-                print(f"❌ TTS greeting error: {e}")
-                # Fallback to Twilio voice
-                response.say(greeting, voice='Polly.Aditi', language='hi-IN')
+            # Play greeting in small chunks with pauses for interruption
+            for i, part in enumerate(greeting_parts):
+                response.say(part, voice='Polly.Joanna')
+                # Add short pause between chunks (except for last part)
+                if i < len(greeting_parts) - 1:
+                    response.pause(length=0.2)
+            
+            print(f"🎵 Playing chunked greeting: {len(greeting_parts)} parts")
             
                 # Add natural pause after greeting
-                response.pause(length=0.2)
+            response.pause(length=0.2)
             
             # Use optimized gather settings for better speech recognition and interruption
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=5,  # Increased timeout to allow more time for speech
+                timeout=1,  # Very short timeout for quick interruption detection
                 speech_timeout='auto',
                 language='en-IN',  # Start with English, will switch based on detection
                 partial_result_callback='/partial_speech',
@@ -279,6 +277,27 @@ def create_voice_bot_server():
         )
         response.append(gather)
         response.say("I didn't hear anything. Please try again.")
+        
+        return str(response)
+    
+    @bot_app.route('/voice_media_streams', methods=['POST'])
+    def voice_media_streams():
+        """Handle incoming calls with Media Streams barge-in"""
+        print("🎬 Media Streams call received")
+        
+        response = VoiceResponse()
+        
+        # Connect to Media Streams WebSocket
+        ngrok_url = get_ngrok_url()
+        if ngrok_url and MEDIA_STREAMS_AVAILABLE:
+            # Replace http with wss for WebSocket
+            ws_url = ngrok_url.replace('http://', 'ws://').replace('https://', 'wss://')
+            stream_url = f"{ws_url}/media_streams"
+            
+            response.connect().stream(url=stream_url)
+            print(f"🔗 Connecting to Media Streams: {stream_url}")
+        else:
+            response.say("I'm sorry, the Media Streams service is not available right now.")
         
         return str(response)
     
@@ -468,38 +487,49 @@ def create_voice_bot_server():
                 else:
                     print(f"✅ Response is valid: '{bot_response}'")
                 
-                # Use enhanced TTS with consistent voice and interruption support
+                # Generate chunked response for better interruption handling
                 try:
-                    from src.enhanced_hindi_tts import speak_mixed_enhanced
-                    
                     # Mark bot as speaking for interruption detection
                     if call_sid:
                         bot_app.call_language[call_sid]['is_bot_speaking'] = True
                         print(f"🤖 Bot started speaking for call {call_sid}")
                     
-                    # Generate audio file using available TTS providers
-                    audio_file = speak_mixed_enhanced(bot_response)
-                    
-                    if audio_file and audio_file.endswith('.mp3'):
-                        # Play the generated audio file
-                        ngrok_url = get_ngrok_url()
-                        if ngrok_url:
-                            response.play(f"{ngrok_url}/audio/{audio_file}")
-                            print(f"🎵 Playing TTS audio: {audio_file}")
-                        else:
-                            print("❌ Ngrok URL not available, using Twilio fallback")
-                            if detected_language in ['hi', 'mixed']:
-                                response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
-                            else:
-                                response.say(bot_response, voice='Polly.Joanna', language='en-IN')
-                    else:
-                        # Fallback to Twilio voices
-                        if detected_language in ['hi', 'mixed']:
-                            response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
-                        else:
-                            response.say(bot_response, voice='Polly.Joanna', language='en-IN')
+                    # Split long responses into smaller chunks for better interruption
+                    def split_response_into_chunks(text, max_chunk_length=50):
+                        """Split text into smaller chunks for better interruption handling"""
+                        words = text.split()
+                        chunks = []
+                        current_chunk = []
                         
-                        print("⚠️ Using Twilio fallback voices")
+                        for word in words:
+                            if len(' '.join(current_chunk + [word])) <= max_chunk_length:
+                                current_chunk.append(word)
+                            else:
+                                if current_chunk:
+                                    chunks.append(' '.join(current_chunk))
+                                current_chunk = [word]
+                        
+                        if current_chunk:
+                            chunks.append(' '.join(current_chunk))
+                        
+                        return chunks
+                    
+                    # Split response into chunks
+                    response_chunks = split_response_into_chunks(bot_response, max_chunk_length=40)
+                    print(f"🔀 Split response into {len(response_chunks)} chunks")
+                    
+                    # Play each chunk with short pauses for interruption
+                    for i, chunk in enumerate(response_chunks):
+                        if detected_language in ['hi', 'mixed']:
+                            response.say(chunk, voice='Polly.Aditi', language='hi-IN')
+                        else:
+                            response.say(chunk, voice='Polly.Joanna', language='en-IN')
+                        
+                        # Add short pause between chunks (except for last chunk)
+                        if i < len(response_chunks) - 1:
+                            response.pause(length=0.1)
+                    
+                    print(f"🎵 Playing chunked response: {len(response_chunks)} parts")
                     
                     # Mark bot as finished speaking
                     if call_sid:
@@ -507,8 +537,8 @@ def create_voice_bot_server():
                         print(f"🤖 Bot finished speaking for call {call_sid}")
                         
                 except Exception as e:
-                    print(f"❌ TTS error: {e}")
-                    # Fallback to Twilio voices
+                    print(f"❌ Chunked TTS error: {e}")
+                    # Fallback to single response
                     if detected_language in ['hi', 'mixed']:
                         response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
                     else:
@@ -536,7 +566,7 @@ def create_voice_bot_server():
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=2,  # Very short timeout for faster interruption detection
+                timeout=1,  # Very short timeout for immediate interruption detection
                 speech_timeout='auto',
                 language='en-IN' if detected_language == 'en' else 'hi-IN',
                 partial_result_callback='/partial_speech',
@@ -583,12 +613,12 @@ def create_voice_bot_server():
             # Check if bot is currently speaking and user is interrupting
             is_bot_speaking = bot_app.call_language[call_sid].get('is_bot_speaking', False)
             
-            if is_bot_speaking and bot_app.call_language[call_sid]['partial_speech_count'] >= 2:
+            if is_bot_speaking and bot_app.call_language[call_sid]['partial_speech_count'] >= 1:
                 current_length = len(partial_result)
                 last_length = len(bot_app.call_language[call_sid].get('last_partial', ''))
                 
                 # If speech is getting longer and more confident, it's an interruption
-                if current_length > last_length and len(partial_result) > 2:
+                if current_length > last_length and len(partial_result) > 1:
                     print(f"🛑 INTERRUPTION DETECTED! User said: {partial_result}")
                     # Mark for interruption handling
                     bot_app.call_language[call_sid]['interruption_detected'] = True
@@ -756,6 +786,49 @@ def start_audio_server():
         
     except Exception as e:
         print(f"❌ Error starting audio server: {e}")
+        return False
+
+def start_media_streams_server():
+    """Start the Media Streams server for barge-in functionality"""
+    if not MEDIA_STREAMS_AVAILABLE:
+        print("❌ Media Streams not available")
+        return False
+    
+    try:
+        import asyncio
+        import threading
+        
+        def run_media_streams_server():
+            """Run Media Streams server in background thread"""
+            try:
+                # Create server with TTS and STT adapters
+                from src.twilio_media_streams import TwilioMediaStreamsServer
+                from src.tts_adapter import get_tts_provider, get_stt_callback
+                
+                server = TwilioMediaStreamsServer(
+                    host="0.0.0.0",
+                    port=8765,
+                    tts_provider=get_tts_provider(),
+                    stt_callback=get_stt_callback(),
+                    vad_aggressiveness=2,
+                    chunk_ms=120
+                )
+                
+                # Run the server
+                asyncio.run(server.start_server())
+                
+            except Exception as e:
+                print(f"❌ Media Streams server error: {e}")
+        
+        # Start server in background thread
+        media_thread = threading.Thread(target=run_media_streams_server, daemon=True)
+        media_thread.start()
+        
+        print("✅ Media Streams server started on port 8765")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Failed to start Media Streams server: {e}")
         return False
 
 def start_voice_bot_server():
@@ -1005,6 +1078,63 @@ def clear_screen():
     """Clear the screen for cleaner output"""
     os.system('cls' if os.name == 'nt' else 'clear')
 
+def make_media_streams_call(phone_number: str):
+    """Make a call with Media Streams barge-in functionality"""
+    if not MEDIA_STREAMS_AVAILABLE:
+        print("❌ Media Streams not available")
+        return
+    
+    print(f"🎬 Making Media Streams call to: {phone_number}")
+    
+    # Start Media Streams server if not already running
+    if not start_media_streams_server():
+        print("❌ Failed to start Media Streams server")
+        return
+    
+    # Update webhook to use Media Streams endpoint
+    ngrok_url = get_ngrok_url()
+    if not ngrok_url:
+        print("❌ Ngrok not available")
+        return
+    
+    webhook_url = f"{ngrok_url}/voice_media_streams"
+    print(f"🔗 Webhook URL: {webhook_url}")
+    
+    try:
+        from twilio.rest import Client
+        
+        account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+        auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+        twilio_phone = os.getenv('TWILIO_PHONE_NUMBER')
+        
+        if not all([account_sid, auth_token, twilio_phone]):
+            print("❌ Twilio credentials not found")
+            return
+        
+        client = Client(account_sid, auth_token)
+        
+        # Update webhook for Media Streams
+        incoming_numbers = client.incoming_phone_numbers.list(phone_number=twilio_phone)
+        if incoming_numbers:
+            incoming_numbers[0].update(voice_url=webhook_url)
+            print("🔄 Updated webhook for Media Streams mode")
+        
+        # Make the call
+        call = client.calls.create(
+            to=phone_number,
+            from_=twilio_phone,
+            url=webhook_url
+        )
+        
+        print(f"✅ Media Streams call initiated!")
+        print(f"📞 SID: {call.sid}")
+        print(f"🎯 Phone should ring!")
+        print(f"🎬 Media Streams barge-in active!")
+        print(f"💬 Bot can be interrupted immediately!")
+        
+    except Exception as e:
+        print(f"❌ Error making Media Streams call: {e}")
+
 def main_menu():
     """Main menu system"""
     while True:
@@ -1013,24 +1143,40 @@ def main_menu():
         print("🌐 Hindi + English Support")
         if REALTIME_AVAILABLE:
             print("⚡ Real-time Conversation Mode Available")
+        if MEDIA_STREAMS_AVAILABLE:
+            print("🎬 Media Streams Barge-In Available")
         print("-" * 30)
         print("1. 📞 Call a number")
         print("2. 📱 Call me")
         if REALTIME_AVAILABLE:
             print("3. ⚡ Call with real-time mode")
             print("4. 🎤 Test real-time locally")
-            print("5. 🔍 Status")
-            print("6. 🧪 Test")
-            print("7. 🎤 Voice bot")
-            print("8. ❌ Exit")
+            if MEDIA_STREAMS_AVAILABLE:
+                print("5. 🎬 Call with Media Streams barge-in")
+                print("6. 🔍 Status")
+                print("7. 🧪 Test")
+                print("8. 🎤 Voice bot")
+                print("9. ❌ Exit")
+            else:
+                print("5. 🔍 Status")
+                print("6. 🧪 Test")
+                print("7. 🎤 Voice bot")
+                print("8. ❌ Exit")
         else:
-            print("3. 🔍 Status")
-            print("4. 🧪 Test")
-            print("5. 🎤 Voice bot")
-            print("6. ❌ Exit")
+            if MEDIA_STREAMS_AVAILABLE:
+                print("3. 🎬 Call with Media Streams barge-in")
+                print("4. 🔍 Status")
+                print("5. 🧪 Test")
+                print("6. 🎤 Voice bot")
+                print("7. ❌ Exit")
+            else:
+                print("3. 🔍 Status")
+                print("4. 🧪 Test")
+                print("5. 🎤 Voice bot")
+                print("6. ❌ Exit")
         print("-" * 30)
         
-        max_choice = 8 if REALTIME_AVAILABLE else 6
+        max_choice = 9 if REALTIME_AVAILABLE and MEDIA_STREAMS_AVAILABLE else (8 if REALTIME_AVAILABLE else (7 if MEDIA_STREAMS_AVAILABLE else 6))
         choice = input(f"Choice (1-{max_choice}): ").strip()
         
         if choice == "1":
@@ -1062,11 +1208,17 @@ def main_menu():
                 print("\n🎤 Stopped.")
             input("\nPress Enter to continue...")
             
-        elif choice == ("5" if REALTIME_AVAILABLE else "3"):
+        elif choice == "5" and REALTIME_AVAILABLE and MEDIA_STREAMS_AVAILABLE:
+            phone = input("📞 Phone number for Media Streams call: ").strip()
+            if phone:
+                make_media_streams_call(phone)
+                input("\nPress Enter to continue...")
+            
+        elif choice == ("6" if REALTIME_AVAILABLE and MEDIA_STREAMS_AVAILABLE else ("5" if REALTIME_AVAILABLE else "3")):
             show_status()
             input("\nPress Enter to continue...")
             
-        elif choice == ("6" if REALTIME_AVAILABLE else "4"):
+        elif choice == ("7" if REALTIME_AVAILABLE and MEDIA_STREAMS_AVAILABLE else ("6" if REALTIME_AVAILABLE else "4")):
             print("🧪 Running tests...")
             try:
                 subprocess.run([sys.executable, "test_mixed_language.py"], check=True)
@@ -1074,7 +1226,7 @@ def main_menu():
                 print("❌ Test failed")
             input("\nPress Enter to continue...")
             
-        elif choice == ("7" if REALTIME_AVAILABLE else "5"):
+        elif choice == ("8" if REALTIME_AVAILABLE and MEDIA_STREAMS_AVAILABLE else ("7" if REALTIME_AVAILABLE else "5")):
             print("🎤 Starting traditional voice bot...")
             print("💡 Speak Hindi or English!")
             try:
@@ -1083,7 +1235,7 @@ def main_menu():
                 print("\n🎤 Stopped.")
             input("\nPress Enter to continue...")
             
-        elif choice == ("8" if REALTIME_AVAILABLE else "6"):
+        elif choice == ("9" if REALTIME_AVAILABLE and MEDIA_STREAMS_AVAILABLE else ("8" if REALTIME_AVAILABLE else "6")):
             print("👋 Goodbye!")
             break
             
