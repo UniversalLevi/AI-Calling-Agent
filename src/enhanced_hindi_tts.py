@@ -182,9 +182,9 @@ class EnhancedHindiTTS:
             import openai
             
             api_key = os.getenv('OPENAI_API_KEY')
-            model = os.getenv('OPENAI_TTS_MODEL', 'tts-1')
+            model = os.getenv('OPENAI_TTS_MODEL', 'tts-1-hd')  # Use HD model for better quality
             
-            # Use female voice for Sara
+            # Use female voice for Sara with optimized settings
             voice = os.getenv('OPENAI_TTS_VOICE', 'nova')  # Nova is a female voice
             
             client = openai.OpenAI(api_key=api_key)

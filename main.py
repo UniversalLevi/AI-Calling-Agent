@@ -208,39 +208,47 @@ def create_voice_bot_server():
             # Use enhanced real-time conversation with shorter timeouts
             print("🚀 Starting realtime conversation mode")
             
-            # Send chunked greeting for better interruption handling
-            greeting_parts = [
-                "Hi there!",
-                "I am Sara.",
-                "How can I help you today?"
-            ]
+            # Generate smooth, natural greeting
+            greeting_text = "Hi there! I am Sara. How can I help you today?"
             
-            # Play greeting in small chunks with pauses for interruption
-            for i, part in enumerate(greeting_parts):
-                response.say(part, voice='Polly.Joanna')
-                # Add short pause between chunks (except for last part)
-                if i < len(greeting_parts) - 1:
-                    response.pause(length=0.2)
+            # Generate single smooth TTS for better quality
+            audio_file = speak_mixed_enhanced(greeting_text)
+            if audio_file:
+                response.play(f"/audio/{audio_file}")
+                print(f"🎵 Playing smooth greeting: {greeting_text}")
+            else:
+                # Fallback to Twilio voice if TTS fails
+                response.say(greeting_text, voice='Polly.Joanna', language='en-IN')
+                print("⚠️ Using Twilio fallback for greeting")
             
-            print(f"🎵 Playing chunked greeting: {len(greeting_parts)} parts")
+            # Very short pause after greeting
+            response.pause(length=0.1)
             
-                # Add natural pause after greeting
-            response.pause(length=0.2)
+            # Dynamic conversation system - adapt timeouts based on context
+            def get_initial_timeout():
+                """Get initial timeout for greeting with abuse prevention"""
+                base_timeout = 12  # Give user time to think after greeting
+                MIN_TIMEOUT = 8   # Minimum 8 seconds for greeting
+                MAX_TIMEOUT = 15  # Maximum 15 seconds for greeting
+                return max(MIN_TIMEOUT, min(MAX_TIMEOUT, base_timeout))
             
-            # Use optimized gather settings for better speech recognition and interruption
+            # Start with greeting stage
+            timeout = get_initial_timeout()
+            
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=1,  # Very short timeout for quick interruption detection
+                timeout=timeout,  # Dynamic timeout based on conversation context
                 speech_timeout='auto',
                 language='en-IN',  # Start with English, will switch based on detection
-                partial_result_callback='/partial_speech',
                 enhanced='true',  # Use enhanced speech recognition
                 profanity_filter='false',  # Don't filter speech
                 num_digits=0,  # Don't expect digits
                 finish_on_key='#'  # Allow finishing with # key
             )
             response.append(gather)
+            
+            print(f"🕐 Dynamic timeout set: {timeout} seconds for greeting stage")
             
             # Add a fallback message if no speech is detected
             response.say("I didn't hear anything. Please try again.", voice='Polly.Joanna', language='en-IN')
@@ -443,13 +451,60 @@ def create_voice_bot_server():
                 
                 # Store language for this call
                 if call_sid:
-                    if isinstance(bot_app.call_language.get(call_sid), dict):
-                        bot_app.call_language[call_sid]['language'] = detected_language
-                    else:
-                        bot_app.call_language[call_sid] = detected_language
+                    # Ensure proper dict structure for language storage
+                    if call_sid not in bot_app.call_language:
+                        bot_app.call_language[call_sid] = {}
+                    elif not isinstance(bot_app.call_language[call_sid], dict):
+                        # Convert string to dict if it was stored as language string
+                        old_lang = bot_app.call_language[call_sid]
+                        bot_app.call_language[call_sid] = {'language': old_lang}
+                    
+                    bot_app.call_language[call_sid]['language'] = detected_language
                 
-                # Fast AI processing with Sara's natural female responses
+                # Dynamic conversation context detection and response generation
                 print(f"🔍 DEBUG: About to check bot_app.gpt: {bot_app.gpt}")
+                
+                # Analyze conversation context for dynamic behavior
+                def analyze_conversation_context(user_input):
+                    """Analyze user input to determine conversation stage and context"""
+                    user_lower = user_input.lower()
+                    
+                    # Greeting/Initial request detection
+                    if any(word in user_lower for word in ['hi', 'hello', 'namaste', 'hey', 'book', 'want', 'need', 'help']):
+                        return "initial_request"
+                    
+                    # Detail providing stage
+                    elif any(word in user_lower for word in ['budget', 'price', 'location', 'date', 'time', 'people', 'days', 'nights']):
+                        return "details"
+                    
+                    # Confirmation/clarification stage
+                    elif any(word in user_lower for word in ['yes', 'no', 'ok', 'sure', 'maybe', 'confirm', 'change']):
+                        return "clarification"
+                    
+                    # Complex query stage
+                    elif len(user_input.split()) > 10:
+                        return "complex_query"
+                    
+                    else:
+                        return "general"
+                
+                # Get conversation context
+                conversation_stage = analyze_conversation_context(speech_result)
+                print(f"🎯 Conversation stage detected: {conversation_stage}")
+                
+                # Store conversation context for next interaction
+                # Initialize or ensure dict structure for call_sid
+                if call_sid not in bot_app.call_language:
+                    bot_app.call_language[call_sid] = {}
+                elif not isinstance(bot_app.call_language[call_sid], dict):
+                    # Convert string to dict if it was stored as language string
+                    old_lang = bot_app.call_language[call_sid]
+                    bot_app.call_language[call_sid] = {'language': old_lang}
+                
+                # Store conversation context
+                bot_app.call_language[call_sid]['conversation_stage'] = conversation_stage
+                bot_app.call_language[call_sid]['last_input_length'] = len(speech_result)
+                
                 if bot_app.gpt:
                     # Check for inappropriate content first
                     from src.language_detector import detect_inappropriate_content, get_appropriate_response
@@ -458,20 +513,77 @@ def create_voice_bot_server():
                         print(f"⚠️ Inappropriate content detected from {caller}")
                         bot_response = get_appropriate_response(detected_language)
                     else:
-                        # Add context for Sara's natural female responses
-                        enhanced_prompt = f"You are Sara, a helpful female AI assistant. Respond naturally and conversationally in {detected_language}. Be warm, friendly, and helpful. Keep responses concise but natural. Always maintain a professional and respectful tone."
-                        print(f"🔍 Calling AI with prompt: {enhanced_prompt[:100]}...")
+                        # Dynamic prompting based on conversation stage
+                        def get_dynamic_prompt(stage, language):
+                            base_prompt = f"You are Sara, a helpful female AI assistant. Respond naturally in {language}. "
+                            
+                            if stage == "initial_request":
+                                return base_prompt + "The user is making an initial request. Ask clarifying questions to understand their needs better. Keep it concise (max 2 sentences)."
+                            elif stage == "details":
+                                return base_prompt + "The user is providing details. Acknowledge their information and ask for any missing details needed. Be specific but brief (max 3 sentences)."
+                            elif stage == "clarification":
+                                return base_prompt + "The user is confirming or clarifying. Provide a clear, helpful response and next steps if needed (max 2 sentences)."
+                            elif stage == "complex_query":
+                                return base_prompt + "The user has a complex question. Break down your response into clear points but keep it concise (max 4 sentences)."
+                            else:
+                                return base_prompt + "Respond helpfully and naturally. Keep it brief (max 2 sentences)."
+                        
+                        # Generate response with dynamic length limits
+                        enhanced_prompt = get_dynamic_prompt(conversation_stage, detected_language)
+                        print(f"🔍 Dynamic prompt for {conversation_stage}: {enhanced_prompt[:100]}...")
                         print(f"🔍 User input: {speech_result}")
+                        
                         bot_response = bot_app.gpt.ask(f"{enhanced_prompt}\n\nUser: {speech_result}", detected_language)
-                        print(f"⚡ Sara's natural response ({detected_language}): '{bot_response}'")
+                        
+                        # Enforce response length limits based on context
+                        def enforce_response_limits(response, stage):
+                            """Enforce dynamic response length limits"""
+                            max_lengths = {
+                                "initial_request": 150,  # 2 sentences max
+                                "details": 200,          # 3 sentences max
+                                "clarification": 120,    # 2 sentences max
+                                "complex_query": 250,    # 4 sentences max
+                                "general": 150           # 2 sentences max
+                            }
+                            
+                            max_length = max_lengths.get(stage, 150)
+                            
+                            if len(response) > max_length:
+                                # Truncate at sentence boundary if possible
+                                sentences = response.split('.')
+                                truncated = ""
+                                for sentence in sentences:
+                                    if len(truncated + sentence + ".") <= max_length:
+                                        truncated += sentence + "."
+                                    else:
+                                        break
+                                
+                                if truncated:
+                                    return truncated.strip()
+                                else:
+                                    # Hard truncate if no sentence boundary found
+                                    return response[:max_length].strip() + "..."
+                            
+                            return response
+                        
+                        # Apply length limits
+                        bot_response = enforce_response_limits(bot_response, conversation_stage)
+                        
+                        print(f"⚡ Sara's dynamic response ({conversation_stage}, {detected_language}): '{bot_response}'")
                         print(f"🔍 Response type: {type(bot_response)}")
                         print(f"🔍 Response length: {len(bot_response) if bot_response else 0}")
                 else:
-                    # Quick fallback with Sara's responses
-                    if detected_language == 'hi':
-                        bot_response = f"हाँ, मैं समझ गई। {speech_result}"
+                    # Quick fallback with context-aware responses
+                    if conversation_stage == "initial_request":
+                        if detected_language == 'hi':
+                            bot_response = "हाँ, मैं आपकी मदद कर सकती हूँ। कृपया और बताएं।"
+                        else:
+                            bot_response = "Yes, I can help you with that. Please tell me more details."
                     else:
-                        bot_response = f"Yes, I understand. {speech_result}"
+                        if detected_language == 'hi':
+                            bot_response = f"मैं समझ गई। {speech_result[:50]}... के बारे में और बताएं।"
+                        else:
+                            bot_response = f"I understand. Please tell me more about {speech_result[:50]}..."
                 
                 # Ensure we have a valid response (this runs regardless of AI provider)
                 print(f"🔍 Validating response: '{bot_response}'")
@@ -494,42 +606,20 @@ def create_voice_bot_server():
                         bot_app.call_language[call_sid]['is_bot_speaking'] = True
                         print(f"🤖 Bot started speaking for call {call_sid}")
                     
-                    # Split long responses into smaller chunks for better interruption
-                    def split_response_into_chunks(text, max_chunk_length=50):
-                        """Split text into smaller chunks for better interruption handling"""
-                        words = text.split()
-                        chunks = []
-                        current_chunk = []
-                        
-                        for word in words:
-                            if len(' '.join(current_chunk + [word])) <= max_chunk_length:
-                                current_chunk.append(word)
-                            else:
-                                if current_chunk:
-                                    chunks.append(' '.join(current_chunk))
-                                current_chunk = [word]
-                        
-                        if current_chunk:
-                            chunks.append(' '.join(current_chunk))
-                        
-                        return chunks
-                    
-                    # Split response into chunks
-                    response_chunks = split_response_into_chunks(bot_response, max_chunk_length=40)
-                    print(f"🔀 Split response into {len(response_chunks)} chunks")
-                    
-                    # Play each chunk with short pauses for interruption
-                    for i, chunk in enumerate(response_chunks):
+                    # Use enhanced TTS for smooth, natural speech
+                    audio_file = speak_mixed_enhanced(bot_response)
+                    if audio_file:
+                        response.play(f"/audio/{audio_file}")
+                        print(f"🎵 Playing smooth enhanced TTS: {audio_file}")
+                    else:
+                        # Fallback to single Twilio response (no chunking for smoother speech)
                         if detected_language in ['hi', 'mixed']:
-                            response.say(chunk, voice='Polly.Aditi', language='hi-IN')
+                            response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
                         else:
-                            response.say(chunk, voice='Polly.Joanna', language='en-IN')
-                        
-                        # Add short pause between chunks (except for last chunk)
-                        if i < len(response_chunks) - 1:
-                            response.pause(length=0.1)
+                            response.say(bot_response, voice='Polly.Joanna', language='en-IN')
+                        print("⚠️ Using smooth Twilio fallback")
                     
-                    print(f"🎵 Playing chunked response: {len(response_chunks)} parts")
+                    print(f"🎵 Playing smooth response: {bot_response[:50]}...")
                     
                     # Mark bot as finished speaking
                     if call_sid:
@@ -562,18 +652,55 @@ def create_voice_bot_server():
                 print(f"   From: {request.form.get('From', 'None')}")
                 response.say("Sorry, there was an error. Please try again.")
             
-            # Continue with optimized speech recognition and interruption
+            # Dynamic timeout based on conversation context
+            call_data = bot_app.call_language.get(call_sid, {})
+            if isinstance(call_data, dict):
+                stored_stage = call_data.get('conversation_stage', 'general')
+                last_input_length = call_data.get('last_input_length', 0)
+            else:
+                # Fallback if it's still a string
+                stored_stage = 'general'
+                last_input_length = 0
+            
+            def get_dynamic_timeout(conversation_stage="general", user_input_length=0):
+                """Get dynamic timeout based on conversation context with abuse prevention"""
+                base_timeout = 0
+                
+                if conversation_stage == "initial_request":
+                    base_timeout = 10  # Give user time to think about their request
+                elif conversation_stage == "details":
+                    base_timeout = 20  # Allow time for detailed responses (booking details, etc.)
+                elif conversation_stage == "clarification":
+                    base_timeout = 8   # Quick clarifications
+                elif conversation_stage == "complex_query":
+                    base_timeout = 15  # Complex responses need more time
+                elif user_input_length > 50:
+                    base_timeout = 12  # Longer previous responses might need more time
+                else:
+                    base_timeout = 10  # Default reasonable timeout
+                
+                # Apply limits to prevent abuse
+                MIN_TIMEOUT = 5   # Minimum 5 seconds
+                MAX_TIMEOUT = 25  # Maximum 25 seconds to prevent abuse
+                
+                return max(MIN_TIMEOUT, min(MAX_TIMEOUT, base_timeout))
+            
+            # Get dynamic timeout for next interaction
+            next_timeout = get_dynamic_timeout(stored_stage, last_input_length)
+            
+            # Continue with dynamic speech recognition
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=1,  # Very short timeout for immediate interruption detection
+                timeout=next_timeout,  # Dynamic timeout based on conversation context
                 speech_timeout='auto',
                 language='en-IN' if detected_language == 'en' else 'hi-IN',
-                partial_result_callback='/partial_speech',
                 enhanced='true',  # Use enhanced speech recognition
                 profanity_filter='false'  # Don't filter speech
             )
             response.append(gather)
+            
+            print(f"🕐 Next timeout: {next_timeout}s for stage '{stored_stage}' (input length: {last_input_length})")
             
         else:
             # No speech detected - optimized recovery with faster interruption
