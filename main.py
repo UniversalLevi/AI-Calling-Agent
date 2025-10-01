@@ -196,13 +196,11 @@ def create_voice_bot_server():
         caller = request.form.get('From', 'Unknown')
         call_sid = request.form.get('CallSid')
         print(f"📞 Incoming call from: {caller}")
-        print(f"🔍 DEBUG: Request form data: {dict(request.form)}")
-        print(f"🔍 DEBUG: Request args: {dict(request.args)}")
         
         # Check if realtime mode is available and requested
         realtime_mode = request.args.get('realtime', 'false').lower() == 'true'
-        print(f"🔍 Realtime mode requested: {realtime_mode}")
-        print(f"🔍 REALTIME_AVAILABLE: {REALTIME_AVAILABLE}")
+        if realtime_mode:
+            print("⚡ Real-time mode active")
         
         if REALTIME_AVAILABLE and realtime_mode:
             # Use enhanced real-time conversation with shorter timeouts
@@ -401,16 +399,12 @@ def create_voice_bot_server():
     @bot_app.route('/process_speech_realtime', methods=['POST'])
     def process_speech_realtime():
         """Enhanced real-time speech processing with interruption handling"""
-        print(f"🔍 DEBUG: process_speech_realtime called")
-        print(f"🔍 DEBUG: Request form data: {dict(request.form)}")
-        print(f"🔍 DEBUG: Request args: {dict(request.args)}")
         response = VoiceResponse()
         speech_result = request.form.get('SpeechResult', '')
         caller = request.form.get('From', 'Unknown')
         call_sid = request.form.get('CallSid')
         
-        print(f"⚡ Real-time caller {caller} said: {speech_result}")
-        print(f"🔍 DEBUG: bot_app.gpt exists: {bot_app.gpt is not None}")
+        print(f"⚡ {caller}: {speech_result}")
         
         # Check for interruption first
         interruption_detected = False
@@ -442,11 +436,8 @@ def create_voice_bot_server():
         
         if speech_result:
             try:
-                # Fast language detection
+                # Fast language detection and initialize response
                 detected_language = detect_language(speech_result)
-                print(f"🌐 Language: {detected_language}")
-                
-                # Initialize bot_response
                 bot_response = ""
                 
                 # Store language for this call
@@ -462,8 +453,6 @@ def create_voice_bot_server():
                     bot_app.call_language[call_sid]['language'] = detected_language
                 
                 # Dynamic conversation context detection and response generation
-                print(f"🔍 DEBUG: About to check bot_app.gpt: {bot_app.gpt}")
-                
                 # Analyze conversation context for dynamic behavior
                 def analyze_conversation_context(user_input):
                     """Analyze user input to determine conversation stage and context"""
@@ -488,22 +477,44 @@ def create_voice_bot_server():
                     else:
                         return "general"
                 
-                # Get conversation context
+                # Get conversation context and store memory
                 conversation_stage = analyze_conversation_context(speech_result)
-                print(f"🎯 Conversation stage detected: {conversation_stage}")
-                
-                # Store conversation context for next interaction
                 # Initialize or ensure dict structure for call_sid
                 if call_sid not in bot_app.call_language:
-                    bot_app.call_language[call_sid] = {}
+                    bot_app.call_language[call_sid] = {
+                        'conversation_history': [],
+                        'extracted_info': {},
+                        'asked_questions': set()
+                    }
                 elif not isinstance(bot_app.call_language[call_sid], dict):
                     # Convert string to dict if it was stored as language string
                     old_lang = bot_app.call_language[call_sid]
-                    bot_app.call_language[call_sid] = {'language': old_lang}
+                    bot_app.call_language[call_sid] = {
+                        'language': old_lang,
+                        'conversation_history': [],
+                        'extracted_info': {},
+                        'asked_questions': set()
+                    }
+                
+                # Ensure all required keys exist
+                if 'conversation_history' not in bot_app.call_language[call_sid]:
+                    bot_app.call_language[call_sid]['conversation_history'] = []
+                if 'extracted_info' not in bot_app.call_language[call_sid]:
+                    bot_app.call_language[call_sid]['extracted_info'] = {}
+                if 'asked_questions' not in bot_app.call_language[call_sid]:
+                    bot_app.call_language[call_sid]['asked_questions'] = set()
                 
                 # Store conversation context
                 bot_app.call_language[call_sid]['conversation_stage'] = conversation_stage
                 bot_app.call_language[call_sid]['last_input_length'] = len(speech_result)
+                
+                # Add current user input to conversation history
+                bot_app.call_language[call_sid]['conversation_history'].append({
+                    'role': 'user',
+                    'content': speech_result,
+                    'timestamp': time.time(),
+                    'stage': conversation_stage
+                })
                 
                 if bot_app.gpt:
                     # Check for inappropriate content first
@@ -513,43 +524,163 @@ def create_voice_bot_server():
                         print(f"⚠️ Inappropriate content detected from {caller}")
                         bot_response = get_appropriate_response(detected_language)
                     else:
-                        # Dynamic prompting based on conversation stage
-                        def get_dynamic_prompt(stage, language):
+                        # Extract information from user input and update memory
+                        def extract_and_store_info(user_input, call_data):
+                            """Extract key information from user input and store in memory"""
+                            user_lower = user_input.lower()
+                            extracted_info = call_data.get('extracted_info', {})
+                            
+                            # Extract location/destination (English and Hindi)
+                            locations = {
+                                'jaipur': 'Jaipur', 'जयपुर': 'Jaipur',
+                                'delhi': 'Delhi', 'दिल्ली': 'Delhi',
+                                'mumbai': 'Mumbai', 'मुंबई': 'Mumbai',
+                                'bangalore': 'Bangalore', 'बैंगलोर': 'Bangalore',
+                                'chennai': 'Chennai', 'चेन्नई': 'Chennai',
+                                'kolkata': 'Kolkata', 'कोलकाता': 'Kolkata',
+                                'hyderabad': 'Hyderabad', 'हैदराबाद': 'Hyderabad',
+                                'pune': 'Pune', 'पुणे': 'Pune',
+                                'ahmedabad': 'Ahmedabad', 'अहमदाबाद': 'Ahmedabad',
+                                'goa': 'Goa', 'गोवा': 'Goa'
+                            }
+                            for location_key, location_value in locations.items():
+                                if location_key in user_lower or location_key in user_input:
+                                    extracted_info['destination'] = location_value
+                                    break
+                            
+                            # Extract budget information
+                            import re
+                            budget_match = re.search(r'(\d+)\s*(?:rupees?|rs\.?|₹)', user_lower)
+                            if budget_match:
+                                extracted_info['budget'] = int(budget_match.group(1))
+                            elif '5000' in user_input or 'five thousand' in user_lower:
+                                extracted_info['budget'] = 5000
+                            elif 'budget' in user_lower and 'friendly' in user_lower:
+                                extracted_info['budget_type'] = 'budget-friendly'
+                            
+                            # Extract duration
+                            duration_patterns = [
+                                (r'(\d+)\s*(?:days?|nights?)', 'duration_days'),
+                                (r'(?:one|two|three|four|five)\s*(?:days?|nights?)', 'duration_text')
+                            ]
+                            for pattern, key in duration_patterns:
+                                match = re.search(pattern, user_lower)
+                                if match:
+                                    extracted_info[key] = match.group(0)
+                                    break
+                            
+                            # Extract dates/timing
+                            if 'today' in user_lower or 'आज' in user_input:
+                                extracted_info['checkin'] = 'today'
+                            elif 'tonight' in user_lower or 'रात' in user_input:
+                                extracted_info['checkin'] = 'tonight'
+                            elif 'tomorrow' in user_lower or 'कल' in user_input:
+                                extracted_info['checkin'] = 'tomorrow'
+                            
+                            # Extract number of people
+                            people_match = re.search(r'(\d+)\s*(?:people|person|व्यक्ति)', user_lower)
+                            if people_match:
+                                extracted_info['people'] = int(people_match.group(1))
+                            
+                            call_data['extracted_info'] = extracted_info
+                            return extracted_info
+                        
+                        # Extract information and generate memory-aware response
+                        current_info = extract_and_store_info(speech_result, bot_app.call_language[call_sid])
+                        def get_memory_aware_prompt(stage, language, call_data):
                             base_prompt = f"You are Sara, a helpful female AI assistant. Respond naturally in {language}. "
                             
+                            # Get conversation history and extracted info
+                            history = call_data.get('conversation_history', [])
+                            extracted_info = call_data.get('extracted_info', {})
+                            asked_questions = call_data.get('asked_questions', set())
+                            
+                            # Build context from memory
+                            context_parts = []
+                            if extracted_info.get('destination'):
+                                context_parts.append(f"Destination: {extracted_info['destination']}")
+                            if extracted_info.get('budget'):
+                                context_parts.append(f"Budget: ₹{extracted_info['budget']}")
+                            elif extracted_info.get('budget_type'):
+                                context_parts.append(f"Budget: {extracted_info['budget_type']}")
+                            if extracted_info.get('duration_days') or extracted_info.get('duration_text'):
+                                duration = extracted_info.get('duration_days') or extracted_info.get('duration_text')
+                                context_parts.append(f"Duration: {duration}")
+                            if extracted_info.get('checkin'):
+                                context_parts.append(f"Check-in: {extracted_info['checkin']}")
+                            if extracted_info.get('people'):
+                                context_parts.append(f"People: {extracted_info['people']}")
+                            
+                            memory_context = ""
+                            if context_parts:
+                                memory_context = f"\n\nKnown information from conversation: {', '.join(context_parts)}"
+                                memory_context += "\nDo NOT ask for information you already know. Build upon what you know."
+                            
+                            # Check if user is asking for options/suggestions
+                            user_wants_options = any(word in speech_result.lower() for word in ['बताओ', 'options', 'suggest', 'recommend', 'show', 'list'])
+                            
+                            # Special handling for providing options/lists
+                            if user_wants_options and extracted_info:
+                                return base_prompt + f"The user wants you to provide hotel options/suggestions. Give 2-3 specific hotel recommendations with names and prices. Be complete in your response - don't cut off mid-sentence. You have all needed info: {', '.join(context_parts)}. Provide complete hotel list with details." + memory_context
+                            
+                            # Stage-specific prompts with memory awareness
                             if stage == "initial_request":
-                                return base_prompt + "The user is making an initial request. Ask clarifying questions to understand their needs better. Keep it concise (max 2 sentences)."
+                                if not extracted_info:
+                                    return base_prompt + "The user is making an initial request. Ask clarifying questions to understand their needs better. Keep it concise (max 2 sentences)." + memory_context
+                                else:
+                                    return base_prompt + "The user is making a request. You already have some information. Ask only for missing details needed. Keep it concise (max 2 sentences)." + memory_context
                             elif stage == "details":
-                                return base_prompt + "The user is providing details. Acknowledge their information and ask for any missing details needed. Be specific but brief (max 3 sentences)."
+                                return base_prompt + "The user is providing details. Acknowledge their information and ask for any missing details needed. Be specific but brief (max 3 sentences)." + memory_context
                             elif stage == "clarification":
-                                return base_prompt + "The user is confirming or clarifying. Provide a clear, helpful response and next steps if needed (max 2 sentences)."
+                                return base_prompt + "The user is confirming or clarifying. Provide a clear, helpful response and next steps if needed (max 2 sentences)." + memory_context
                             elif stage == "complex_query":
-                                return base_prompt + "The user has a complex question. Break down your response into clear points but keep it concise (max 4 sentences)."
+                                return base_prompt + "The user has a complex question. Break down your response into clear points but keep it concise (max 4 sentences)." + memory_context
                             else:
-                                return base_prompt + "Respond helpfully and naturally. Keep it brief (max 2 sentences)."
+                                return base_prompt + "Respond helpfully and naturally. Keep it brief (max 2 sentences)." + memory_context
                         
-                        # Generate response with dynamic length limits
-                        enhanced_prompt = get_dynamic_prompt(conversation_stage, detected_language)
-                        print(f"🔍 Dynamic prompt for {conversation_stage}: {enhanced_prompt[:100]}...")
-                        print(f"🔍 User input: {speech_result}")
-                        
+                        # Generate response with memory-aware prompting
+                        enhanced_prompt = get_memory_aware_prompt(conversation_stage, detected_language, bot_app.call_language[call_sid])
                         bot_response = bot_app.gpt.ask(f"{enhanced_prompt}\n\nUser: {speech_result}", detected_language)
                         
                         # Enforce response length limits based on context
                         def enforce_response_limits(response, stage):
                             """Enforce dynamic response length limits"""
-                            max_lengths = {
-                                "initial_request": 150,  # 2 sentences max
-                                "details": 200,          # 3 sentences max
-                                "clarification": 120,    # 2 sentences max
-                                "complex_query": 250,    # 4 sentences max
-                                "general": 150           # 2 sentences max
-                            }
                             
-                            max_length = max_lengths.get(stage, 150)
+                            # Check if user is asking for options/lists - allow longer responses
+                            user_wants_options = any(word in speech_result.lower() for word in ['बताओ', 'options', 'suggest', 'recommend', 'show', 'list'])
+                            
+                            if user_wants_options:
+                                # Allow longer responses for hotel lists/options
+                                max_length = 400  # Allow up to 400 characters for complete lists
+                            else:
+                                max_lengths = {
+                                    "initial_request": 150,  # 2 sentences max
+                                    "details": 200,          # 3 sentences max
+                                    "clarification": 120,    # 2 sentences max
+                                    "complex_query": 250,    # 4 sentences max
+                                    "general": 150           # 2 sentences max
+                                }
+                                max_length = max_lengths.get(stage, 150)
                             
                             if len(response) > max_length:
-                                # Truncate at sentence boundary if possible
+                                # For lists, try to keep complete items
+                                if user_wants_options and ('1.' in response or '2.' in response):
+                                    # Try to keep complete list items
+                                    lines = response.split('\n')
+                                    truncated_lines = []
+                                    current_length = 0
+                                    
+                                    for line in lines:
+                                        if current_length + len(line) + 1 <= max_length:
+                                            truncated_lines.append(line)
+                                            current_length += len(line) + 1
+                                        else:
+                                            break
+                                    
+                                    if truncated_lines:
+                                        return '\n'.join(truncated_lines).strip()
+                                
+                                # Fallback: truncate at sentence boundary
                                 sentences = response.split('.')
                                 truncated = ""
                                 for sentence in sentences:
@@ -569,9 +700,22 @@ def create_voice_bot_server():
                         # Apply length limits
                         bot_response = enforce_response_limits(bot_response, conversation_stage)
                         
-                        print(f"⚡ Sara's dynamic response ({conversation_stage}, {detected_language}): '{bot_response}'")
-                        print(f"🔍 Response type: {type(bot_response)}")
-                        print(f"🔍 Response length: {len(bot_response) if bot_response else 0}")
+                        # Add bot response to conversation history
+                        bot_app.call_language[call_sid]['conversation_history'].append({
+                            'role': 'assistant',
+                            'content': bot_response,
+                            'timestamp': time.time(),
+                            'stage': conversation_stage
+                        })
+                        
+                        # Store last bot response for smart timeout calculation
+                        bot_app.call_language[call_sid]['last_bot_response'] = bot_response
+                        
+                        # Keep conversation history manageable (last 10 exchanges)
+                        if len(bot_app.call_language[call_sid]['conversation_history']) > 20:
+                            bot_app.call_language[call_sid]['conversation_history'] = bot_app.call_language[call_sid]['conversation_history'][-20:]
+                        
+                        print(f"🤖 Sara: {bot_response[:50]}{'...' if len(bot_response) > 50 else ''}")
                 else:
                     # Quick fallback with context-aware responses
                     if conversation_stage == "initial_request":
@@ -585,46 +729,25 @@ def create_voice_bot_server():
                         else:
                             bot_response = f"I understand. Please tell me more about {speech_result[:50]}..."
                 
-                # Ensure we have a valid response (this runs regardless of AI provider)
-                print(f"🔍 Validating response: '{bot_response}'")
-                print(f"🔍 Validation check - not bot_response: {not bot_response}")
-                print(f"🔍 Validation check - strip empty: {bot_response.strip() == '' if bot_response else 'N/A'}")
+                # Ensure we have a valid response
                 if not bot_response or bot_response.strip() == "":
-                    print(f"⚠️ Empty response detected, using fallback")
                     if detected_language == 'hi':
                         bot_response = "मैं आपकी बात समझ गई हूँ। क्या मैं आपकी और मदद कर सकती हूँ?"
                     else:
                         bot_response = "I understand what you're saying. How else can I help you today?"
-                    print(f"✅ Fallback response set: '{bot_response}'")
-                else:
-                    print(f"✅ Response is valid: '{bot_response}'")
                 
                 # Generate chunked response for better interruption handling
                 try:
-                    # Mark bot as speaking for interruption detection
-                    if call_sid:
-                        bot_app.call_language[call_sid]['is_bot_speaking'] = True
-                        print(f"🤖 Bot started speaking for call {call_sid}")
-                    
-                    # Use enhanced TTS for smooth, natural speech
+                    # Generate and play response
                     audio_file = speak_mixed_enhanced(bot_response)
                     if audio_file:
                         response.play(f"/audio/{audio_file}")
-                        print(f"🎵 Playing smooth enhanced TTS: {audio_file}")
                     else:
-                        # Fallback to single Twilio response (no chunking for smoother speech)
+                        # Fallback to Twilio voice
                         if detected_language in ['hi', 'mixed']:
                             response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
                         else:
                             response.say(bot_response, voice='Polly.Joanna', language='en-IN')
-                        print("⚠️ Using smooth Twilio fallback")
-                    
-                    print(f"🎵 Playing smooth response: {bot_response[:50]}...")
-                    
-                    # Mark bot as finished speaking
-                    if call_sid:
-                        bot_app.call_language[call_sid]['is_bot_speaking'] = False
-                        print(f"🤖 Bot finished speaking for call {call_sid}")
                         
                 except Exception as e:
                     print(f"❌ Chunked TTS error: {e}")
@@ -652,41 +775,54 @@ def create_voice_bot_server():
                 print(f"   From: {request.form.get('From', 'None')}")
                 response.say("Sorry, there was an error. Please try again.")
             
-            # Dynamic timeout based on conversation context
+            # Smart timeout based on bot response length and conversation context
             call_data = bot_app.call_language.get(call_sid, {})
             if isinstance(call_data, dict):
                 stored_stage = call_data.get('conversation_stage', 'general')
                 last_input_length = call_data.get('last_input_length', 0)
+                last_bot_response = call_data.get('last_bot_response', '')
             else:
                 # Fallback if it's still a string
                 stored_stage = 'general'
                 last_input_length = 0
+                last_bot_response = ''
             
-            def get_dynamic_timeout(conversation_stage="general", user_input_length=0):
-                """Get dynamic timeout based on conversation context with abuse prevention"""
-                base_timeout = 0
+            def get_smart_timeout(conversation_stage="general", user_input_length=0, bot_response_length=0):
+                """Calculate smart timeout - responsive for short responses, longer for complex ones"""
                 
+                # Base timeout - start with shorter defaults for responsiveness
+                base_timeout = 8  # Start with 8 seconds as base
+                
+                # Adjust based on conversation stage
                 if conversation_stage == "initial_request":
-                    base_timeout = 10  # Give user time to think about their request
+                    base_timeout = 10  # Slightly more time for thinking
                 elif conversation_stage == "details":
-                    base_timeout = 20  # Allow time for detailed responses (booking details, etc.)
+                    base_timeout = 15  # More time for detailed responses
                 elif conversation_stage == "clarification":
-                    base_timeout = 8   # Quick clarifications
+                    base_timeout = 6   # Quick confirmations
                 elif conversation_stage == "complex_query":
-                    base_timeout = 15  # Complex responses need more time
-                elif user_input_length > 50:
-                    base_timeout = 12  # Longer previous responses might need more time
-                else:
-                    base_timeout = 10  # Default reasonable timeout
+                    base_timeout = 12  # Moderate time for complex responses
                 
-                # Apply limits to prevent abuse
+                # If user just said something short (like "hi"), be more responsive
+                if user_input_length <= 10:
+                    base_timeout = max(6, base_timeout - 2)
+                
+                # If bot gave a long response, give user more time to process
+                if bot_response_length > 150:
+                    base_timeout += 3
+                elif bot_response_length > 100:
+                    base_timeout += 2
+                
+                # Apply limits - much more responsive
                 MIN_TIMEOUT = 5   # Minimum 5 seconds
-                MAX_TIMEOUT = 25  # Maximum 25 seconds to prevent abuse
+                MAX_TIMEOUT = 20  # Maximum 20 seconds (reduced from 35)
                 
-                return max(MIN_TIMEOUT, min(MAX_TIMEOUT, base_timeout))
+                final_timeout = max(MIN_TIMEOUT, min(MAX_TIMEOUT, base_timeout))
+                return int(final_timeout)
             
-            # Get dynamic timeout for next interaction
-            next_timeout = get_dynamic_timeout(stored_stage, last_input_length)
+            # Get smart timeout for next interaction
+            last_bot_response_length = len(last_bot_response) if last_bot_response else 0
+            next_timeout = get_smart_timeout(stored_stage, last_input_length, last_bot_response_length)
             
             # Continue with dynamic speech recognition
             gather = response.gather(
@@ -700,7 +836,7 @@ def create_voice_bot_server():
             )
             response.append(gather)
             
-            print(f"🕐 Next timeout: {next_timeout}s for stage '{stored_stage}' (input length: {last_input_length})")
+            print(f"⏱️ Timeout: {next_timeout}s")
             
         else:
             # No speech detected - optimized recovery with faster interruption
