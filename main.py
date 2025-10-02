@@ -216,7 +216,8 @@ def create_voice_bot_server():
                 print(f"🎵 Playing smooth greeting: {greeting_text}")
             else:
                 # Fallback to Twilio voice if TTS fails
-                response.say(greeting_text, voice='Polly.Joanna', language='en-IN')
+                twilio_voice_en = os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna')
+                response.say(greeting_text, voice=twilio_voice_en, language='en-IN')
                 print("⚠️ Using Twilio fallback for greeting")
             
             # Very short pause after greeting
@@ -249,7 +250,8 @@ def create_voice_bot_server():
             print(f"🕐 Dynamic timeout set: {timeout} seconds for greeting stage")
             
             # Add a fallback message if no speech is detected
-            response.say("I didn't hear anything. Please try again.", voice='Polly.Joanna', language='en-IN')
+            twilio_voice_en = os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna')
+            response.say("I didn't hear anything. Please try again.", voice=twilio_voice_en, language='en-IN')
             
             # Initialize realtime voice bot for this call
             global realtime_voice_bot, twilio_realtime_integration
@@ -357,15 +359,18 @@ def create_voice_bot_server():
                             response.play(tts_result)
                         else:
                             print(f"🗣️ Fallback to Twilio TTS (Hindi voice)")
-                            response.say(bot_response, voice='Polly.Aditi')
+                            twilio_voice_hi = os.getenv('TWILIO_VOICE_HI', 'Polly.Aditi')
+                            response.say(bot_response, voice=twilio_voice_hi)
                     except Exception as tts_error:
                         print(f"❌ Enhanced TTS failed: {tts_error}")
                         print(f"🗣️ Fallback to Twilio TTS (Hindi voice)")
-                        response.say(bot_response, voice='Polly.Aditi')
+                        twilio_voice_hi = os.getenv('TWILIO_VOICE_HI', 'Polly.Aditi')
+                        response.say(bot_response, voice=twilio_voice_hi)
                 else:
                     # Use Twilio TTS for English
                     print(f"🗣️ Using Twilio TTS (English voice)")
-                    response.say(bot_response, voice='Polly.Joanna')
+                    twilio_voice_en = os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna')
+                    response.say(bot_response, voice=twilio_voice_en)
                 
             except Exception as e:
                 print(f"❌ Error processing speech: {e}")
@@ -458,8 +463,16 @@ def create_voice_bot_server():
                     """Analyze user input to determine conversation stage and context"""
                     user_lower = user_input.lower()
                     
+                    # Selection/Choice detection (highest priority)
+                    if any(phrase in user_lower for phrase in [
+                        'book kar do', 'book karo', 'select', 'choose', 'pick', 'take this', 'take that',
+                        'इसको बुक कर', 'यह बुक कर', 'इसे बुक कर', 'चुनता हूं', 'लेता हूं', 'करूंगा',
+                        'villa 243', 'option 1', 'option 2', 'first one', 'second one', 'पहला', 'दूसरा'
+                    ]):
+                        return "selection"
+                    
                     # Greeting/Initial request detection
-                    if any(word in user_lower for word in ['hi', 'hello', 'namaste', 'hey', 'book', 'want', 'need', 'help']):
+                    elif any(word in user_lower for word in ['hi', 'hello', 'namaste', 'hey', 'book', 'want', 'need', 'help']):
                         return "initial_request"
                     
                     # Detail providing stage
@@ -588,7 +601,13 @@ def create_voice_bot_server():
                         # Extract information and generate memory-aware response
                         current_info = extract_and_store_info(speech_result, bot_app.call_language[call_sid])
                         def get_memory_aware_prompt(stage, language, call_data):
-                            base_prompt = f"You are Sara, a helpful female AI assistant. Respond naturally in {language}. "
+                            # Improve language consistency
+                            if language == 'hi':
+                                base_prompt = "You are Sara, a helpful female AI assistant. Always respond in Hindi/Hinglish. Use Hindi words and phrases naturally. "
+                            elif language == 'mixed':
+                                base_prompt = "You are Sara, a helpful female AI assistant. Respond in Hinglish (mix of Hindi and English). Use Hindi words when natural. "
+                            else:
+                                base_prompt = f"You are Sara, a helpful female AI assistant. Respond naturally in {language}. "
                             
                             # Get conversation history and extracted info
                             history = call_data.get('conversation_history', [])
@@ -621,10 +640,31 @@ def create_voice_bot_server():
                             
                             # Special handling for providing options/lists
                             if user_wants_options and extracted_info:
-                                return base_prompt + f"The user wants you to provide hotel options/suggestions. Give 2-3 specific hotel recommendations with names and prices. Be complete in your response - don't cut off mid-sentence. You have all needed info: {', '.join(context_parts)}. Provide complete hotel list with details." + memory_context
+                                return base_prompt + f"The user wants you to provide specific options/suggestions based on their request. Give 2-3 relevant recommendations with details. Be complete in your response - don't cut off mid-sentence. You have all needed info: {', '.join(context_parts)}. Provide complete list with helpful details." + memory_context
+                            
+                            # Check if we have enough info to provide recommendations automatically
+                            has_key_info = len(extracted_info) >= 2  # At least 2 pieces of information
+                            
+                            # Check if user is making a specific choice/selection
+                            user_making_choice = any(phrase in speech_result.lower() for phrase in [
+                                'book kar do', 'book karo', 'book this', 'book that', 'select', 'choose', 'pick',
+                                'इसको बुक कर', 'यह बुक कर', 'इसे बुक कर', 'चुनता हूं', 'लेता हूं', 'करूंगा',
+                                'villa 243', 'hotel', 'option 1', 'option 2', 'first one', 'second one',
+                                'पहला', 'दूसरा', 'तीसरा', 'यह वाला', 'वो वाला'
+                            ])
+                            
+                            # If user confirms details or says "yes" and we have enough info, provide recommendations
+                            user_confirms = any(word in speech_result.lower() for word in ['yes', 'हाँ', 'हां', 'correct', 'right', 'okay', 'ok'])
+                            
+                            if user_making_choice:
+                                return base_prompt + f"The user is making a specific choice or selection. Acknowledge their choice and proceed with booking/confirmation process. Don't provide more options - they've already decided. Focus on next steps like getting details or confirming the booking." + memory_context
+                            elif user_confirms and has_key_info:
+                                return base_prompt + f"The user has confirmed the details. You have enough information to provide specific recommendations based on their request. Give 2-3 relevant options with names, brief descriptions, and helpful details. Don't say you'll 'look' or 'search' - directly provide useful recommendations now. Ask if they'd like more details about any of these options." + memory_context
                             
                             # Stage-specific prompts with memory awareness
-                            if stage == "initial_request":
+                            if stage == "selection":
+                                return base_prompt + "The user is making a specific choice or selection. Acknowledge their choice positively and proceed with the next step (booking details, confirmation, etc.). Don't provide more options - they've decided. Be helpful and move forward." + memory_context
+                            elif stage == "initial_request":
                                 if not extracted_info:
                                     return base_prompt + "The user is making an initial request. Ask clarifying questions to understand their needs better. Keep it concise (max 2 sentences)." + memory_context
                                 else:
@@ -636,7 +676,11 @@ def create_voice_bot_server():
                             elif stage == "complex_query":
                                 return base_prompt + "The user has a complex question. Break down your response into clear points but keep it concise (max 4 sentences)." + memory_context
                             else:
-                                return base_prompt + "Respond helpfully and naturally. Keep it brief (max 2 sentences)." + memory_context
+                                # For general responses, if we have key info, be more proactive
+                                if has_key_info:
+                                    return base_prompt + f"You're helping the user with their request. Be helpful and continue the conversation. If you have enough details, provide specific recommendations instead of saying you'll 'look' or 'search'. Keep it conversational (max 3 sentences)." + memory_context
+                                else:
+                                    return base_prompt + "Respond helpfully and naturally. Keep it brief (max 2 sentences)." + memory_context
                         
                         # Generate response with memory-aware prompting
                         enhanced_prompt = get_memory_aware_prompt(conversation_stage, detected_language, bot_app.call_language[call_sid])
@@ -649,22 +693,34 @@ def create_voice_bot_server():
                             # Check if user is asking for options/lists - allow longer responses
                             user_wants_options = any(word in speech_result.lower() for word in ['बताओ', 'options', 'suggest', 'recommend', 'show', 'list'])
                             
-                            if user_wants_options:
-                                # Allow longer responses for hotel lists/options
-                                max_length = 400  # Allow up to 400 characters for complete lists
+                            # Also check if bot is providing recommendations (contains multiple options/names)
+                            bot_providing_recommendations = (
+                                'recommend' in response.lower() or 
+                                'suggest' in response.lower() or
+                                'option' in response.lower() or
+                                '"' in response or  # Quoted names like "Heritage Villa"
+                                response.count(',') >= 2 or  # Multiple items listed
+                                'both of which' in response.lower() or
+                                'either' in response.lower() and 'or' in response.lower()
+                            )
+                            
+                            if user_wants_options or bot_providing_recommendations:
+                                # Allow much longer responses for lists/options/recommendations
+                                max_length = 800  # Increased to 800 characters for complete recommendations
                             else:
                                 max_lengths = {
                                     "initial_request": 150,  # 2 sentences max
                                     "details": 200,          # 3 sentences max
                                     "clarification": 120,    # 2 sentences max
+                                    "selection": 180,        # Acknowledge choice and next steps
                                     "complex_query": 250,    # 4 sentences max
                                     "general": 150           # 2 sentences max
                                 }
                                 max_length = max_lengths.get(stage, 150)
                             
                             if len(response) > max_length:
-                                # For lists, try to keep complete items
-                                if user_wants_options and ('1.' in response or '2.' in response):
+                                # For recommendations/lists, try to keep complete items
+                                if (user_wants_options or bot_providing_recommendations) and ('1.' in response or '2.' in response):
                                     # Try to keep complete list items
                                     lines = response.split('\n')
                                     truncated_lines = []
@@ -692,13 +748,33 @@ def create_voice_bot_server():
                                 if truncated:
                                     return truncated.strip()
                                 else:
+                                    # For recommendations with quotes, try to preserve complete quoted names
+                                    if bot_providing_recommendations and '"' in response:
+                                        # Find the last complete quoted item that fits
+                                        words = response.split()
+                                        truncated_words = []
+                                        current_length = 0
+                                        
+                                        for word in words:
+                                            if current_length + len(word) + 1 <= max_length:
+                                                truncated_words.append(word)
+                                                current_length += len(word) + 1
+                                            else:
+                                                break
+                                        
+                                        if truncated_words:
+                                            return ' '.join(truncated_words).strip()
+                                    
                                     # Hard truncate if no sentence boundary found
                                     return response[:max_length].strip() + "..."
                             
                             return response
                         
                         # Apply length limits
+                        original_length = len(bot_response)
                         bot_response = enforce_response_limits(bot_response, conversation_stage)
+                        if len(bot_response) != original_length:
+                            print(f"⚠️ Response truncated: {original_length} → {len(bot_response)} chars")
                         
                         # Add bot response to conversation history
                         bot_app.call_language[call_sid]['conversation_history'].append({
@@ -745,17 +821,21 @@ def create_voice_bot_server():
                     else:
                         # Fallback to Twilio voice
                         if detected_language in ['hi', 'mixed']:
-                            response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
+                            twilio_voice_hi = os.getenv('TWILIO_VOICE_HI', 'Polly.Aditi')
+                            response.say(bot_response, voice=twilio_voice_hi, language='hi-IN')
                         else:
-                            response.say(bot_response, voice='Polly.Joanna', language='en-IN')
+                            twilio_voice_en = os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna')
+                            response.say(bot_response, voice=twilio_voice_en, language='en-IN')
                         
                 except Exception as e:
                     print(f"❌ Chunked TTS error: {e}")
                     # Fallback to single response
                     if detected_language in ['hi', 'mixed']:
-                        response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
+                        twilio_voice_hi = os.getenv('TWILIO_VOICE_HI', 'Polly.Aditi')
+                        response.say(bot_response, voice=twilio_voice_hi, language='hi-IN')
                     else:
-                        response.say(bot_response, voice='Polly.Joanna', language='en-IN')
+                        twilio_voice_en = os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna')
+                        response.say(bot_response, voice=twilio_voice_en, language='en-IN')
                     
                     # Mark bot as finished speaking even on error
                     if call_sid:
@@ -839,17 +919,20 @@ def create_voice_bot_server():
             print(f"⏱️ Timeout: {next_timeout}s")
             
         else:
-            # No speech detected - optimized recovery with faster interruption
+            # No speech detected - continue listening
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=2,  # Very short timeout for faster interruption detection
+                timeout=8,  # Give user time to respond
                 language='en-IN',
-                partial_result_callback='/partial_speech',
-                enhanced='true',  # Use enhanced speech recognition
-                profanity_filter='false'  # Don't filter speech
+                enhanced='true',
+                profanity_filter='false'
             )
             response.append(gather)
+            
+            # Fallback message if still no response
+            twilio_voice_en = os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna')
+            response.say("I'm still here if you need help. What would you like to know?", voice=twilio_voice_en, language='en-IN')
         
         return str(response)
     
@@ -918,7 +1001,8 @@ def create_voice_bot_server():
                 response = VoiceResponse()
                 
                 # Stop any current audio and immediately process the interruption
-                response.say("", voice='Polly.Joanna')  # Empty say to stop current audio
+                twilio_voice_en = os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna')
+                response.say("", voice=twilio_voice_en)  # Empty say to stop current audio
                 
                 # Redirect to process the interrupted speech
                 ngrok_url = get_ngrok_url()
