@@ -833,25 +833,31 @@ def create_voice_bot_server():
                                 'recommend' in response.lower() or 
                                 'suggest' in response.lower() or
                                 'option' in response.lower() or
+                                'choice' in response.lower() or
+                                'book' in response.lower() or
+                                'hotel' in response.lower() or
+                                'villa' in response.lower() or
                                 '"' in response or  # Quoted names like "Heritage Villa"
                                 response.count(',') >= 2 or  # Multiple items listed
                                 'both of which' in response.lower() or
-                                'either' in response.lower() and 'or' in response.lower()
+                                'either' in response.lower() and 'or' in response.lower() or
+                                '1.' in response or '2.' in response or '3.' in response or  # Numbered lists
+                                'first' in response.lower() and 'second' in response.lower()  # Multiple options
                             )
                             
                             if user_wants_options or bot_providing_recommendations:
                                 # Allow much longer responses for lists/options/recommendations
-                                max_length = 800  # Increased to 800 characters for complete recommendations
+                                max_length = 1200  # Increased to 1200 characters for complete recommendations
                             else:
                                 max_lengths = {
-                                    "initial_request": 150,  # 2 sentences max
-                                    "details": 200,          # 3 sentences max
-                                    "clarification": 120,    # 2 sentences max
-                                    "selection": 180,        # Acknowledge choice and next steps
-                                    "complex_query": 250,    # 4 sentences max
-                                    "general": 150           # 2 sentences max
+                                    "initial_request": 300,  # Increased for better responses
+                                    "details": 400,          # Increased for detailed responses
+                                    "clarification": 250,    # Increased for clarifications
+                                    "selection": 300,        # Increased for selection responses
+                                    "complex_query": 500,    # Increased for complex queries
+                                    "general": 300           # Increased for general responses
                                 }
-                                max_length = max_lengths.get(stage, 150)
+                                max_length = max_lengths.get(stage, 300)
                             
                             if len(response) > max_length:
                                 # For recommendations/lists, try to keep complete items

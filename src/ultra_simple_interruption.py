@@ -44,11 +44,16 @@ class UltraSimpleInterruption:
         if call_sid not in self.call_states:
             self.call_states[call_sid] = {
                 'response_count': 0,
-                'last_activity': time.time()
+                'last_activity': time.time(),
+                'detected_language': language
             }
         
         self.call_states[call_sid]['response_count'] += 1
         self.call_states[call_sid]['last_activity'] = time.time()
+        self.call_states[call_sid]['detected_language'] = language
+        
+        # Determine STT language based on detected language
+        stt_language = 'hi-IN' if language in ['hi', 'mixed'] else 'en-IN'
         
         # Add gather FIRST for immediate interruption detection
         gather = response.gather(
@@ -56,7 +61,7 @@ class UltraSimpleInterruption:
             action='/process_speech_realtime?interruption=simple',
             timeout=self.gather_timeout,  # Short timeout for interruption
             speech_timeout='auto',
-            language='hi-IN' if language in ['hi', 'mixed'] else 'en-IN',
+            language=stt_language,  # Dynamic language based on detection
             enhanced='true',
             profanity_filter='false'
         )
@@ -80,8 +85,6 @@ class UltraSimpleInterruption:
             # If no bot text, add a default message to prevent empty gather
             logger.warning("⚠️ No bot text provided, adding default message")
             self._add_twilio_voice_to_gather(gather, "Hello! How can I help you?", language)
-        
-        response.append(gather)
         
         # If gather times out, continue listening
         response.redirect('/ultra_simple_interruption_timeout')
