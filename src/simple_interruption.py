@@ -87,6 +87,11 @@ class SimpleInterruptionHandler:
         response.redirect('/simple_interruption_timeout')
         
         logger.info(f"⚡ Created interruption-friendly response (timeout: {self.interruption_timeout}s)")
+        
+        # Debug: Print the TwiML response
+        twiml_str = str(response)
+        logger.info(f"📞 TwiML Response:\n{twiml_str}")
+        
         return response
     
     def _add_twilio_speech(self, response: VoiceResponse, text: str, language: str):

@@ -71,10 +71,15 @@ class UltraSimpleInterruption:
                     logger.info(f"🎵 Playing TTS inside gather: {bot_text[:50]}...")
                 else:
                     # Fallback to Twilio voice
+                    logger.warning("⚠️ TTS returned None, using Twilio voice fallback")
                     self._add_twilio_voice_to_gather(gather, bot_text, language)
             except Exception as e:
                 logger.error(f"❌ TTS error: {e}")
                 self._add_twilio_voice_to_gather(gather, bot_text, language)
+        else:
+            # If no bot text, add a default message to prevent empty gather
+            logger.warning("⚠️ No bot text provided, adding default message")
+            self._add_twilio_voice_to_gather(gather, "Hello! How can I help you?", language)
         
         response.append(gather)
         
@@ -82,6 +87,11 @@ class UltraSimpleInterruption:
         response.redirect('/ultra_simple_interruption_timeout')
         
         logger.info(f"⚡ Created ultra-simple response with true interruption (timeout: {self.gather_timeout}s)")
+        
+        # Debug: Print the TwiML response
+        twiml_str = str(response)
+        logger.info(f"📞 TwiML Response:\n{twiml_str}")
+        
         return response
     
     def _add_twilio_voice(self, response: VoiceResponse, text: str, language: str):
