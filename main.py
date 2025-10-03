@@ -94,6 +94,36 @@ except ImportError as e:
     MEDIA_STREAMS_AVAILABLE = False
     print(f"⚠️ Media Streams not available: {e}")
 
+# Import Ultra-Simple Interruption system (actually works)
+try:
+    from src.ultra_simple_interruption import create_ultra_simple_response, handle_ultra_simple_timeout
+    ULTRA_SIMPLE_INTERRUPTION_AVAILABLE = True
+    print("✅ Ultra-simple interruption system available")
+except ImportError as e:
+    ULTRA_SIMPLE_INTERRUPTION_AVAILABLE = False
+    print(f"⚠️ Ultra-simple interruption not available: {e}")
+
+# Import Simple Interruption system (reliable fallback)
+try:
+    from src.simple_interruption import get_simple_interruption_handler, create_interruption_response
+    SIMPLE_INTERRUPTION_AVAILABLE = True
+    print("✅ Simple interruption system available")
+except ImportError as e:
+    SIMPLE_INTERRUPTION_AVAILABLE = False
+    print(f"⚠️ Simple interruption not available: {e}")
+
+# Import WebSocket Interruption system (advanced)
+try:
+    from src.websocket_interruption import start_websocket_interruption_server, WebSocketInterruptionHandler
+    WEBSOCKET_INTERRUPTION_AVAILABLE = True
+    print("✅ WebSocket interruption system available")
+except ImportError as e:
+    WEBSOCKET_INTERRUPTION_AVAILABLE = False
+    print(f"⚠️ WebSocket interruption not available: {e}")
+
+# Set interruption availability (prefer ultra-simple, then simple, then websocket)
+INTERRUPTION_AVAILABLE = ULTRA_SIMPLE_INTERRUPTION_AVAILABLE or SIMPLE_INTERRUPTION_AVAILABLE or WEBSOCKET_INTERRUPTION_AVAILABLE
+
 # Global variables
 voice_bot_app = None
 audio_server_app = None
@@ -197,31 +227,54 @@ def create_voice_bot_server():
         call_sid = request.form.get('CallSid')
         print(f"📞 Incoming call from: {caller}")
         
-        # Check if realtime mode is available and requested
+        # Check for smart call features
         realtime_mode = request.args.get('realtime', 'false').lower() == 'true'
-        if realtime_mode:
-            print("⚡ Real-time mode active")
+        interruption_mode = request.args.get('interruption', 'none').lower()
+        media_streams_mode = request.args.get('media_streams', 'false').lower() == 'true'
+        
+        # Smart call mode - auto-detect and enable all features
+        if realtime_mode or interruption_mode != 'none' or media_streams_mode:
+            features = []
+            if realtime_mode:
+                features.append("⚡ Real-time")
+            if interruption_mode != 'none':
+                features.append(f"🎧 {interruption_mode.title()} interruption")
+            if media_streams_mode:
+                features.append("🎬 Media Streams")
+            
+            print(f"🚀 Smart call mode active: {', '.join(features)}")
         
         if REALTIME_AVAILABLE and realtime_mode:
             # Use enhanced real-time conversation with shorter timeouts
-            print("🚀 Starting realtime conversation mode")
+            print("🚀 Starting smart call mode")
             
             # Generate smooth, natural greeting
             greeting_text = "Hi there! I am Sara. How can I help you today?"
             
-            # Generate single smooth TTS for better quality
-            audio_file = speak_mixed_enhanced(greeting_text)
-            if audio_file:
-                response.play(f"/audio/{audio_file}")
-                print(f"🎵 Playing smooth greeting: {greeting_text}")
+            # Use ultra-simple interruption if requested
+            if interruption_mode == 'simple' and ULTRA_SIMPLE_INTERRUPTION_AVAILABLE:
+                print("🎧 Using ultra-simple interruption system for greeting")
+                from src.ultra_simple_interruption import create_ultra_simple_response
+                return str(create_ultra_simple_response(call_sid, greeting_text, 'en'))
+            elif interruption_mode == 'simple' and SIMPLE_INTERRUPTION_AVAILABLE:
+                print("🎧 Using simple interruption system for greeting")
+                from src.simple_interruption import create_interruption_response
+                return str(create_interruption_response(call_sid, greeting_text, 'en'))
             else:
-                # Fallback to Twilio voice if TTS fails
-                twilio_voice_en = os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna')
-                response.say(greeting_text, voice=twilio_voice_en, language='en-IN')
-                print("⚠️ Using Twilio fallback for greeting")
-            
-            # Very short pause after greeting
-            response.pause(length=0.1)
+                # Standard real-time mode
+                # Generate single smooth TTS for better quality
+                audio_file = speak_mixed_enhanced(greeting_text)
+                if audio_file:
+                    response.play(f"/audio/{audio_file}")
+                    print(f"🎵 Playing smooth greeting: {greeting_text}")
+                else:
+                    # Fallback to Twilio voice if TTS fails
+                    twilio_voice_en = os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna')
+                    response.say(greeting_text, voice=twilio_voice_en, language='en-IN')
+                    print("⚠️ Using Twilio fallback for greeting")
+                
+                # Very short pause after greeting
+                response.pause(length=0.1)
             
             # Dynamic conversation system - adapt timeouts based on context
             def get_initial_timeout():
@@ -288,6 +341,29 @@ def create_voice_bot_server():
         
         return str(response)
     
+    @bot_app.route('/voice_websocket_interruption', methods=['POST'])
+    def voice_websocket_interruption():
+        """Handle incoming calls with WebSocket-based interruption"""
+        print("🎧 WebSocket interruption call received")
+        response = VoiceResponse()
+        
+        # Get ngrok URL for WebSocket connection
+        ngrok_url = get_ngrok_url()
+        if ngrok_url:
+            # Create WebSocket URL for Media Streams
+            ws_url = ngrok_url.replace('http://', 'ws://').replace('https://', 'wss://')
+            stream_url = f"{ws_url}/websocket_interruption"
+            
+            # Start Media Streams connection
+            connect = response.connect()
+            connect.stream(url=stream_url)
+            
+            print(f"🔗 Connecting to WebSocket interruption: {stream_url}")
+        else:
+            response.say("I'm sorry, the interruption service is not available right now.")
+        
+        return str(response)
+    
     @bot_app.route('/voice_media_streams', methods=['POST'])
     def voice_media_streams():
         """Handle incoming calls with Media Streams barge-in"""
@@ -308,6 +384,14 @@ def create_voice_bot_server():
             response.say("I'm sorry, the Media Streams service is not available right now.")
         
         return str(response)
+    
+    # WebSocket handler for interruption
+    if WEBSOCKET_INTERRUPTION_AVAILABLE:
+        @bot_app.route('/websocket_interruption')
+        def websocket_interruption():
+            """WebSocket endpoint for real-time interruption"""
+            # This will be handled by the WebSocket server
+            return "WebSocket interruption endpoint", 200
     
     @bot_app.route('/process_speech', methods=['POST'])
     def process_speech():
@@ -409,7 +493,25 @@ def create_voice_bot_server():
         caller = request.form.get('From', 'Unknown')
         call_sid = request.form.get('CallSid')
         
+        # Check if simple interruption mode is active
+        interruption_mode = request.args.get('interruption', 'none').lower()
+        
         print(f"⚡ {caller}: {speech_result}")
+        
+        # Check for hang-up phrases
+        hangup_phrases = [
+            'bye', 'goodbye', 'thank you', 'thanks', 'end call', 'hang up', 
+            'call khatam', 'call band', 'bye bye', 'tata', 'chalo bye',
+            'call end', 'disconnect', 'close call', 'finish call'
+        ]
+        
+        speech_lower = speech_result.lower().strip()
+        if any(phrase in speech_lower for phrase in hangup_phrases):
+            print(f"👋 User wants to end call: {speech_result}")
+            response = VoiceResponse()
+            response.say("Thank you for calling! Have a great day. Goodbye!", voice=os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna'), language='en-IN')
+            response.hangup()
+            return str(response)
         
         # Check for interruption first
         interruption_detected = False
@@ -812,30 +914,40 @@ def create_voice_bot_server():
                     else:
                         bot_response = "I understand what you're saying. How else can I help you today?"
                 
-                # Generate chunked response for better interruption handling
-                try:
-                    # Generate and play response
-                    audio_file = speak_mixed_enhanced(bot_response)
-                    if audio_file:
-                        response.play(f"/audio/{audio_file}")
-                    else:
-                        # Fallback to Twilio voice
+                # Use ultra-simple interruption if requested
+                if interruption_mode == 'simple' and ULTRA_SIMPLE_INTERRUPTION_AVAILABLE:
+                    print("🎧 Using ultra-simple interruption system for response")
+                    from src.ultra_simple_interruption import create_ultra_simple_response
+                    return str(create_ultra_simple_response(call_sid, bot_response, detected_language))
+                elif interruption_mode == 'simple' and SIMPLE_INTERRUPTION_AVAILABLE:
+                    print("🎧 Using simple interruption system for response")
+                    from src.simple_interruption import create_interruption_response
+                    return str(create_interruption_response(call_sid, bot_response, detected_language))
+                else:
+                    # Generate chunked response for better interruption handling
+                    try:
+                        # Generate and play response
+                        audio_file = speak_mixed_enhanced(bot_response)
+                        if audio_file:
+                            response.play(f"/audio/{audio_file}")
+                        else:
+                            # Fallback to Twilio voice
+                            if detected_language in ['hi', 'mixed']:
+                                twilio_voice_hi = os.getenv('TWILIO_VOICE_HI', 'Polly.Aditi')
+                                response.say(bot_response, voice=twilio_voice_hi, language='hi-IN')
+                            else:
+                                twilio_voice_en = os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna')
+                                response.say(bot_response, voice=twilio_voice_en, language='en-IN')
+                        
+                    except Exception as e:
+                        print(f"❌ Chunked TTS error: {e}")
+                        # Fallback to single response
                         if detected_language in ['hi', 'mixed']:
                             twilio_voice_hi = os.getenv('TWILIO_VOICE_HI', 'Polly.Aditi')
                             response.say(bot_response, voice=twilio_voice_hi, language='hi-IN')
                         else:
                             twilio_voice_en = os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna')
                             response.say(bot_response, voice=twilio_voice_en, language='en-IN')
-                        
-                except Exception as e:
-                    print(f"❌ Chunked TTS error: {e}")
-                    # Fallback to single response
-                    if detected_language in ['hi', 'mixed']:
-                        twilio_voice_hi = os.getenv('TWILIO_VOICE_HI', 'Polly.Aditi')
-                        response.say(bot_response, voice=twilio_voice_hi, language='hi-IN')
-                    else:
-                        twilio_voice_en = os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna')
-                        response.say(bot_response, voice=twilio_voice_en, language='en-IN')
                     
                     # Mark bot as finished speaking even on error
                     if call_sid:
@@ -1017,6 +1129,28 @@ def create_voice_bot_server():
         response = VoiceResponse()
         response.say("I didn't catch that. Please try again.")
         return str(response)
+    
+    # Ultra-simple interruption timeout handler
+    if ULTRA_SIMPLE_INTERRUPTION_AVAILABLE:
+        @bot_app.route('/ultra_simple_interruption_timeout', methods=['POST'])
+        def ultra_simple_interruption_timeout():
+            """Handle timeout for ultra-simple interruption system"""
+            call_sid = request.form.get('CallSid')
+            print(f"⏰ Ultra-simple interruption timeout for call: {call_sid}")
+            
+            from src.ultra_simple_interruption import handle_ultra_simple_timeout
+            return str(handle_ultra_simple_timeout(call_sid))
+    
+    # Simple interruption timeout handler
+    if SIMPLE_INTERRUPTION_AVAILABLE:
+        @bot_app.route('/simple_interruption_timeout', methods=['POST'])
+        def simple_interruption_timeout():
+            """Handle timeout for simple interruption system"""
+            call_sid = request.form.get('CallSid')
+            print(f"⏰ Simple interruption timeout for call: {call_sid}")
+            
+            from src.simple_interruption import handle_interruption_timeout
+            return str(handle_interruption_timeout(call_sid))
     
     @bot_app.route('/audio/<filename>')
     def serve_audio(filename):
@@ -1482,112 +1616,329 @@ def make_media_streams_call(phone_number: str):
     except Exception as e:
         print(f"❌ Error making Media Streams call: {e}")
 
+def make_websocket_interruption_call(phone_number: str):
+    """Make a call with WebSocket-based interruption"""
+    if not WEBSOCKET_INTERRUPTION_AVAILABLE:
+        print("❌ WebSocket interruption not available")
+        return
+    
+    print(f"🎧 Making WebSocket interruption call to: {phone_number}")
+    
+    # Start WebSocket interruption server
+    try:
+        print("🚀 Starting WebSocket interruption server...")
+        start_websocket_interruption_server(host="0.0.0.0", port=8080)
+        print("✅ WebSocket server started on port 8080")
+    except Exception as e:
+        print(f"❌ Failed to start WebSocket server: {e}")
+        return
+    
+    # Update webhook to use WebSocket interruption endpoint
+    ngrok_url = get_ngrok_url()
+    if not ngrok_url:
+        print("❌ Ngrok not available")
+        return
+    
+    webhook_url = f"{ngrok_url}/voice_websocket_interruption"
+    print(f"🔗 Webhook URL: {webhook_url}")
+    
+    try:
+        from twilio.rest import Client
+        
+        account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+        auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+        twilio_phone = os.getenv('TWILIO_PHONE_NUMBER')
+        
+        if not all([account_sid, auth_token, twilio_phone]):
+            print("❌ Twilio credentials not found")
+            return
+        
+        client = Client(account_sid, auth_token)
+        
+        # Update webhook for WebSocket interruption
+        incoming_numbers = client.incoming_phone_numbers.list(phone_number=twilio_phone)
+        if incoming_numbers:
+            incoming_numbers[0].update(voice_url=webhook_url)
+            print("🔄 Updated webhook for WebSocket interruption mode")
+        
+        # Make the call
+        call = client.calls.create(
+            to=phone_number,
+            from_=twilio_phone,
+            url=webhook_url
+        )
+        
+        print(f"✅ WebSocket interruption call initiated!")
+        print(f"📞 SID: {call.sid}")
+        print(f"🎯 Phone should ring!")
+        print(f"🎧 WebSocket interruption active!")
+        print(f"💬 Real-time audio streaming with interruption!")
+        print(f"🔄 Bot can be interrupted immediately via WebSocket!")
+        
+    except Exception as e:
+        print(f"❌ Error making WebSocket interruption call: {e}")
+
+def make_smart_call(phone_number: str):
+    """Make a smart call with all available features automatically enabled"""
+    print(f"🤖 Making smart call to: {phone_number}")
+    
+    # Auto-detect best available features
+    features = []
+    webhook_params = []
+    
+    if REALTIME_AVAILABLE:
+        features.append("⚡ Real-time conversation")
+        webhook_params.append("realtime=true")
+    
+    if ULTRA_SIMPLE_INTERRUPTION_AVAILABLE:
+        features.append("🎧 Ultra-simple interruption")
+        webhook_params.append("interruption=simple")
+    elif SIMPLE_INTERRUPTION_AVAILABLE:
+        features.append("🎧 Simple interruption")
+        webhook_params.append("interruption=simple")
+    elif WEBSOCKET_INTERRUPTION_AVAILABLE:
+        features.append("🎧 WebSocket interruption")
+        webhook_params.append("interruption=websocket")
+    
+    if MEDIA_STREAMS_AVAILABLE:
+        features.append("🎬 Media Streams barge-in")
+        webhook_params.append("media_streams=true")
+    
+    print("🚀 Enabled features:")
+    for feature in features:
+        print(f"   {feature}")
+    
+    try:
+        from twilio.rest import Client
+        
+        account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+        auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+        twilio_phone = os.getenv('TWILIO_PHONE_NUMBER')
+        
+        if not all([account_sid, auth_token, twilio_phone]):
+            print("❌ Twilio credentials not found")
+            return
+        
+        ngrok_url = get_ngrok_url()
+        if not ngrok_url:
+            print("❌ Ngrok not available")
+            return
+        
+        # Build webhook URL with all enabled features
+        webhook_url = f"{ngrok_url}/voice?" + "&".join(webhook_params)
+        print(f"🔗 Webhook URL: {webhook_url}")
+        
+        client = Client(account_sid, auth_token)
+        
+        # Update webhook for smart call
+        incoming_numbers = client.incoming_phone_numbers.list(phone_number=twilio_phone)
+        if incoming_numbers:
+            incoming_numbers[0].update(voice_url=webhook_url)
+            print("🔄 Updated webhook for smart call mode")
+        
+        # Make the call
+        call = client.calls.create(
+            to=phone_number,
+            from_=twilio_phone,
+            url=webhook_url
+        )
+        
+        print(f"✅ Smart call initiated!")
+        print(f"📞 SID: {call.sid}")
+        print(f"🎯 Phone should ring!")
+        print(f"💬 All features active - speak naturally!")
+        print(f"🛑 Say 'bye' or 'thank you' to end call")
+        
+    except Exception as e:
+        print(f"❌ Error making smart call: {e}")
+
+def make_simple_interruption_call(phone_number: str):
+    """Make a call with simple interruption system"""
+    if not SIMPLE_INTERRUPTION_AVAILABLE:
+        print("❌ Simple interruption not available")
+        return
+    
+    print(f"🎧 Making simple interruption call to: {phone_number}")
+    print("💡 This uses enhanced real-time mode with 2-second interruption detection")
+    
+    # Use the enhanced real-time mode which now includes simple interruption
+    try:
+        from twilio.rest import Client
+        
+        account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+        auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+        twilio_phone = os.getenv('TWILIO_PHONE_NUMBER')
+        
+        if not all([account_sid, auth_token, twilio_phone]):
+            print("❌ Twilio credentials not found")
+            return
+        
+        ngrok_url = get_ngrok_url()
+        if not ngrok_url:
+            print("❌ Ngrok not available")
+            return
+        
+        # Use the real-time endpoint with interruption enhancement
+        webhook_url = f"{ngrok_url}/voice?realtime=true&interruption=simple"
+        print(f"🔗 Webhook URL: {webhook_url}")
+        
+        client = Client(account_sid, auth_token)
+        
+        # Update webhook for simple interruption
+        incoming_numbers = client.incoming_phone_numbers.list(phone_number=twilio_phone)
+        if incoming_numbers:
+            incoming_numbers[0].update(voice_url=webhook_url)
+            print("🔄 Updated webhook for simple interruption mode")
+        
+        # Make the call
+        call = client.calls.create(
+            to=phone_number,
+            from_=twilio_phone,
+            url=webhook_url
+        )
+        
+        print(f"✅ Simple interruption call initiated!")
+        print(f"📞 SID: {call.sid}")
+        print(f"🎯 Phone should ring!")
+        print(f"🎧 Simple interruption active!")
+        print(f"💬 Bot can be interrupted with 2-second detection!")
+        print(f"⚡ Enhanced real-time conversation with interruption!")
+        
+    except Exception as e:
+        print(f"❌ Error making simple interruption call: {e}")
+
+def test_system():
+    """Test all system components"""
+    print("🧪 Testing AI Calling Bot System...")
+    print("-" * 40)
+    
+    # Test 1: Environment Variables
+    print("1. 🔧 Testing Environment Variables...")
+    required_vars = ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_PHONE_NUMBER', 'OPENAI_API_KEY']
+    env_ok = True
+    for var in required_vars:
+        if os.getenv(var):
+            print(f"   ✅ {var}: Set")
+        else:
+            print(f"   ❌ {var}: Missing")
+            env_ok = False
+    
+    if env_ok:
+        print("   ✅ All environment variables set")
+    else:
+        print("   ❌ Some environment variables missing")
+    
+    # Test 2: Feature Availability
+    print("\n2. 🚀 Testing Feature Availability...")
+    features = []
+    if REALTIME_AVAILABLE:
+        features.append("Real-time")
+        print("   ✅ Real-time conversation: Available")
+    else:
+        print("   ❌ Real-time conversation: Not available")
+    
+    if MEDIA_STREAMS_AVAILABLE:
+        features.append("Media Streams")
+        print("   ✅ Media Streams: Available")
+    else:
+        print("   ❌ Media Streams: Not available")
+    
+    if ULTRA_SIMPLE_INTERRUPTION_AVAILABLE:
+        features.append("Ultra-Simple Interruption")
+        print("   ✅ Ultra-Simple Interruption: Available")
+    elif SIMPLE_INTERRUPTION_AVAILABLE:
+        features.append("Simple Interruption")
+        print("   ✅ Simple Interruption: Available")
+    elif WEBSOCKET_INTERRUPTION_AVAILABLE:
+        features.append("WebSocket Interruption")
+        print("   ✅ WebSocket Interruption: Available")
+    else:
+        print("   ❌ Interruption: Not available")
+    
+    # Test 3: Ngrok
+    print("\n3. 🌐 Testing Ngrok...")
+    ngrok_url = get_ngrok_url()
+    if ngrok_url:
+        print(f"   ✅ Ngrok: {ngrok_url}")
+    else:
+        print("   ❌ Ngrok: Not available")
+    
+    # Test 4: TTS
+    print("\n4. 🎵 Testing TTS...")
+    try:
+        from src.enhanced_hindi_tts import speak_mixed_enhanced
+        test_audio = speak_mixed_enhanced("Test message")
+        if test_audio:
+            print("   ✅ TTS: Working")
+        else:
+            print("   ❌ TTS: Failed")
+    except Exception as e:
+        print(f"   ❌ TTS: Error - {e}")
+    
+    # Summary
+    print("\n" + "=" * 40)
+    if env_ok and features and ngrok_url:
+        print("✅ System Status: READY")
+        print(f"🚀 Available features: {', '.join(features)}")
+        print("📞 Ready to make smart calls!")
+    else:
+        print("❌ System Status: ISSUES DETECTED")
+        print("🔧 Please fix the issues above before making calls")
+    
+    print("=" * 40)
+
 def main_menu():
-    """Main menu system"""
+    """Simplified main menu - single smart call option"""
     while True:
         clear_screen()
         print("🤖 AI CALLING BOT")
         print("🌐 Hindi + English Support")
+        
+        # Show available features
+        features = []
         if REALTIME_AVAILABLE:
-            print("⚡ Real-time Conversation Mode Available")
+            features.append("⚡ Real-time")
         if MEDIA_STREAMS_AVAILABLE:
-            print("🎬 Media Streams Barge-In Available")
+            features.append("🎬 Media Streams")
+        if ULTRA_SIMPLE_INTERRUPTION_AVAILABLE:
+            features.append("🎧 Ultra-Simple Interruption")
+        elif SIMPLE_INTERRUPTION_AVAILABLE:
+            features.append("🎧 Simple Interruption")
+        elif WEBSOCKET_INTERRUPTION_AVAILABLE:
+            features.append("🎧 WebSocket Interruption")
+        
+        if features:
+            print(f"🚀 Available features: {', '.join(features)}")
+        
         print("-" * 30)
-        print("1. 📞 Call a number")
-        print("2. 📱 Call me")
-        if REALTIME_AVAILABLE:
-            print("3. ⚡ Call with real-time mode")
-            print("4. 🎤 Test real-time locally")
-            if MEDIA_STREAMS_AVAILABLE:
-                print("5. 🎬 Call with Media Streams barge-in")
-                print("6. 🔍 Status")
-                print("7. 🧪 Test")
-                print("8. 🎤 Voice bot")
-                print("9. ❌ Exit")
-            else:
-                print("5. 🔍 Status")
-                print("6. 🧪 Test")
-                print("7. 🎤 Voice bot")
-                print("8. ❌ Exit")
-        else:
-            if MEDIA_STREAMS_AVAILABLE:
-                print("3. 🎬 Call with Media Streams barge-in")
-                print("4. 🔍 Status")
-                print("5. 🧪 Test")
-                print("6. 🎤 Voice bot")
-                print("7. ❌ Exit")
-            else:
-                print("3. 🔍 Status")
-                print("4. 🧪 Test")
-                print("5. 🎤 Voice bot")
-                print("6. ❌ Exit")
+        print("1. 📞 Make Smart Call")
+        print("2. 🧪 Test System")
+        print("3. 🔍 Status")
+        print("4. ❌ Exit")
         print("-" * 30)
         
-        max_choice = 9 if REALTIME_AVAILABLE and MEDIA_STREAMS_AVAILABLE else (8 if REALTIME_AVAILABLE else (7 if MEDIA_STREAMS_AVAILABLE else 6))
-        choice = input(f"Choice (1-{max_choice}): ").strip()
+        choice = input("Choice (1-4): ").strip()
         
         if choice == "1":
-            phone = input("📞 Phone number: ").strip()
+            phone = input("📞 Enter phone number: ").strip()
             if phone:
-                make_call(phone)
+                make_smart_call(phone)
                 input("\nPress Enter to continue...")
-            
+        
         elif choice == "2":
-            # Replace with your own number for testing
-            test_number = input("📞 Enter your phone number for testing: ").strip()
-            if test_number:
-                make_call(test_number)
+            test_system()
             input("\nPress Enter to continue...")
-            
-        elif choice == "3" and REALTIME_AVAILABLE:
-            phone = input("📞 Phone number for real-time call: ").strip()
-            if phone:
-                make_realtime_call(phone)
-                input("\nPress Enter to continue...")
-            
-        elif choice == "4" and REALTIME_AVAILABLE:
-            print("🎤 Starting real-time voice bot locally...")
-            print("💡 Speak naturally - the bot will respond in real-time!")
-            print("💡 You can interrupt the bot while it's speaking!")
-            try:
-                subprocess.run([sys.executable, "-m", "src.realtime_voice_bot"])
-            except KeyboardInterrupt:
-                print("\n🎤 Stopped.")
-            input("\nPress Enter to continue...")
-            
-        elif choice == "5" and REALTIME_AVAILABLE and MEDIA_STREAMS_AVAILABLE:
-            phone = input("📞 Phone number for Media Streams call: ").strip()
-            if phone:
-                make_media_streams_call(phone)
-                input("\nPress Enter to continue...")
-            
-        elif choice == ("6" if REALTIME_AVAILABLE and MEDIA_STREAMS_AVAILABLE else ("5" if REALTIME_AVAILABLE else "3")):
+        
+        elif choice == "3":
             show_status()
             input("\nPress Enter to continue...")
-            
-        elif choice == ("7" if REALTIME_AVAILABLE and MEDIA_STREAMS_AVAILABLE else ("6" if REALTIME_AVAILABLE else "4")):
-            print("🧪 Running tests...")
-            try:
-                subprocess.run([sys.executable, "test_mixed_language.py"], check=True)
-            except:
-                print("❌ Test failed")
-            input("\nPress Enter to continue...")
-            
-        elif choice == ("8" if REALTIME_AVAILABLE and MEDIA_STREAMS_AVAILABLE else ("7" if REALTIME_AVAILABLE else "5")):
-            print("🎤 Starting traditional voice bot...")
-            print("💡 Speak Hindi or English!")
-            try:
-                subprocess.run([sys.executable, "-m", "src.voice_bot"])
-            except KeyboardInterrupt:
-                print("\n🎤 Stopped.")
-            input("\nPress Enter to continue...")
-            
-        elif choice == ("9" if REALTIME_AVAILABLE and MEDIA_STREAMS_AVAILABLE else ("8" if REALTIME_AVAILABLE else "6")):
+        
+        elif choice == "4":
             print("👋 Goodbye!")
             break
-            
+        
         else:
-            print(f"❌ Invalid choice (1-{max_choice})")
+            print("❌ Invalid choice (1-4)")
             time.sleep(1)
 
 def show_project_info():
