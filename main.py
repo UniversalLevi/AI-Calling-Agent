@@ -225,7 +225,12 @@ def create_voice_bot_server():
         
         caller = request.form.get('From', 'Unknown')
         call_sid = request.form.get('CallSid')
+        
+        # Enhanced logging for debugging
         print(f"📞 Incoming call from: {caller}")
+        print(f"📞 Call SID: {call_sid}")
+        print(f"📞 Request args: {dict(request.args)}")
+        print(f"📞 Request form: {dict(request.form)}")
         
         # Check for smart call features
         realtime_mode = request.args.get('realtime', 'false').lower() == 'true'
@@ -254,12 +259,34 @@ def create_voice_bot_server():
             # Use ultra-simple interruption if requested
             if interruption_mode == 'simple' and ULTRA_SIMPLE_INTERRUPTION_AVAILABLE:
                 print("🎧 Using ultra-simple interruption system for greeting")
-                from src.ultra_simple_interruption import create_ultra_simple_response
-                return str(create_ultra_simple_response(call_sid, greeting_text, 'en'))
+                try:
+                    from src.ultra_simple_interruption import create_ultra_simple_response
+                    response_twiml = create_ultra_simple_response(call_sid, greeting_text, 'en')
+                    print(f"✅ Ultra-simple response created successfully")
+                    print(f"📞 Response length: {len(str(response_twiml))} characters")
+                    return str(response_twiml)
+                except Exception as e:
+                    print(f"❌ Ultra-simple interruption error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Fallback to standard response
+                    response.say("Hello! How can I help you?", voice=os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna'), language='en-IN')
+                    return str(response)
             elif interruption_mode == 'simple' and SIMPLE_INTERRUPTION_AVAILABLE:
                 print("🎧 Using simple interruption system for greeting")
-                from src.simple_interruption import create_interruption_response
-                return str(create_interruption_response(call_sid, greeting_text, 'en'))
+                try:
+                    from src.simple_interruption import create_interruption_response
+                    response_twiml = create_interruption_response(call_sid, greeting_text, 'en')
+                    print(f"✅ Simple response created successfully")
+                    print(f"📞 Response length: {len(str(response_twiml))} characters")
+                    return str(response_twiml)
+                except Exception as e:
+                    print(f"❌ Simple interruption error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Fallback to standard response
+                    response.say("Hello! How can I help you?", voice=os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna'), language='en-IN')
+                    return str(response)
             else:
                 # Standard real-time mode
                 # Generate single smooth TTS for better quality
@@ -493,10 +520,16 @@ def create_voice_bot_server():
         caller = request.form.get('From', 'Unknown')
         call_sid = request.form.get('CallSid')
         
+        # Enhanced logging for debugging
+        print(f"⚡ Processing speech from: {caller}")
+        print(f"⚡ Call SID: {call_sid}")
+        print(f"⚡ Speech result: '{speech_result}'")
+        print(f"⚡ Request args: {dict(request.args)}")
+        print(f"⚡ Request form: {dict(request.form)}")
+        
         # Check if simple interruption mode is active
         interruption_mode = request.args.get('interruption', 'none').lower()
-        
-        print(f"⚡ {caller}: {speech_result}")
+        print(f"⚡ Interruption mode: {interruption_mode}")
         
         # Check for hang-up phrases
         hangup_phrases = [
@@ -1136,10 +1169,22 @@ def create_voice_bot_server():
         def ultra_simple_interruption_timeout():
             """Handle timeout for ultra-simple interruption system"""
             call_sid = request.form.get('CallSid')
-            print(f"⏰ Ultra-simple interruption timeout for call: {call_sid}")
+            caller = request.form.get('From', 'Unknown')
+            print(f"⏰ Ultra-simple interruption timeout for call: {call_sid} from {caller}")
+            print(f"📞 Timeout request form: {dict(request.form)}")
             
-            from src.ultra_simple_interruption import handle_ultra_simple_timeout
-            return str(handle_ultra_simple_timeout(call_sid))
+            try:
+                from src.ultra_simple_interruption import handle_ultra_simple_timeout
+                response_twiml = handle_ultra_simple_timeout(call_sid)
+                print(f"✅ Ultra-simple timeout response created")
+                return str(response_twiml)
+            except Exception as e:
+                print(f"❌ Ultra-simple timeout error: {e}")
+                import traceback
+                traceback.print_exc()
+                response = VoiceResponse()
+                response.say("I'm still here. How can I help you?", voice=os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna'), language='en-IN')
+                return str(response)
     
     # Simple interruption timeout handler
     if SIMPLE_INTERRUPTION_AVAILABLE:
@@ -1147,10 +1192,22 @@ def create_voice_bot_server():
         def simple_interruption_timeout():
             """Handle timeout for simple interruption system"""
             call_sid = request.form.get('CallSid')
-            print(f"⏰ Simple interruption timeout for call: {call_sid}")
+            caller = request.form.get('From', 'Unknown')
+            print(f"⏰ Simple interruption timeout for call: {call_sid} from {caller}")
+            print(f"📞 Timeout request form: {dict(request.form)}")
             
-            from src.simple_interruption import handle_interruption_timeout
-            return str(handle_interruption_timeout(call_sid))
+            try:
+                from src.simple_interruption import handle_interruption_timeout
+                response_twiml = handle_interruption_timeout(call_sid)
+                print(f"✅ Simple timeout response created")
+                return str(response_twiml)
+            except Exception as e:
+                print(f"❌ Simple timeout error: {e}")
+                import traceback
+                traceback.print_exc()
+                response = VoiceResponse()
+                response.say("I'm still here. How can I help you?", voice=os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna'), language='en-IN')
+                return str(response)
     
     @bot_app.route('/audio/<filename>')
     def serve_audio(filename):
