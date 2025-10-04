@@ -22,7 +22,8 @@ class UltraSimpleInterruption:
     def __init__(self):
         """Initialize the ultra-simple interruption handler"""
         self.call_states = {}
-        self.gather_timeout = 3  # 3 seconds - short enough for interruption
+        self.gather_timeout = 5  # Increased to 5 seconds for thinking pauses
+        self.max_thinking_pause = 8  # Allow up to 8 seconds for complex responses
         
         logger.info("🎧 Ultra-simple interruption initialized")
     
@@ -55,11 +56,14 @@ class UltraSimpleInterruption:
         # Determine STT language based on detected language
         stt_language = 'hi-IN' if language in ['hi', 'mixed'] else 'en-IN'
         
+        # Smart timeout adjustment based on conversation context
+        smart_timeout = self._calculate_smart_timeout(call_sid, bot_text)
+        
         # Add gather FIRST for immediate interruption detection
         gather = response.gather(
             input='speech',
             action='/process_speech_realtime?interruption=simple',
-            timeout=self.gather_timeout,  # Short timeout for interruption
+            timeout=smart_timeout,  # Smart timeout for thinking pauses
             speech_timeout='auto',
             language=stt_language,  # Dynamic language based on detection
             enhanced='true',
@@ -89,13 +93,35 @@ class UltraSimpleInterruption:
         # If gather times out, continue listening
         response.redirect('/ultra_simple_interruption_timeout')
         
-        logger.info(f"⚡ Created ultra-simple response with true interruption (timeout: {self.gather_timeout}s)")
+        logger.info(f"⚡ Created ultra-simple response with true interruption (timeout: {smart_timeout}s)")
         
         # Debug: Print the TwiML response
         twiml_str = str(response)
         logger.info(f"📞 TwiML Response:\n{twiml_str}")
         
         return response
+    
+    def _calculate_smart_timeout(self, call_sid: str, bot_text: str) -> int:
+        """Calculate smart timeout based on conversation context"""
+        base_timeout = self.gather_timeout
+        
+        # Check if bot is asking for complex information
+        complex_questions = [
+            'details', 'information', 'preferences', 'requirements', 
+            'budget', 'dates', 'guests', 'amenities', 'location'
+        ]
+        
+        if any(word in bot_text.lower() for word in complex_questions):
+            # Give more time for complex questions
+            return min(base_timeout + 3, self.max_thinking_pause)
+        
+        # Check if bot is providing options/recommendations
+        if any(word in bot_text.lower() for word in ['option', 'recommend', 'suggest', 'choice']):
+            # Give time to consider options
+            return min(base_timeout + 2, self.max_thinking_pause)
+        
+        # Default timeout for simple questions
+        return base_timeout
     
     def _add_twilio_voice(self, response: VoiceResponse, text: str, language: str):
         """Add Twilio voice to response"""

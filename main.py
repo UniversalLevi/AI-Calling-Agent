@@ -531,18 +531,54 @@ def create_voice_bot_server():
         interruption_mode = request.args.get('interruption', 'none').lower()
         print(f"⚡ Interruption mode: {interruption_mode}")
         
-        # Check for hang-up phrases
+        # Enhanced STT confidence check
+        speech_confidence = float(request.form.get('Confidence', '0.0'))
+        print(f"🎤 Speech confidence: {speech_confidence:.2f}")
+        
+        # If confidence is very low, try to improve the result
+        if speech_confidence < 0.3 and speech_result:
+            print(f"⚠️ Low confidence speech: '{speech_result}' - confidence: {speech_confidence}")
+            # Try to clean up common STT errors
+            cleaned_speech = speech_result.replace('hotel hotel', 'hotel').replace('booking booking', 'booking')
+            if cleaned_speech != speech_result:
+                print(f"🔧 Cleaned speech: '{cleaned_speech}'")
+                speech_result = cleaned_speech
+        
+        # Check for hang-up phrases (enhanced for Hindi/mixed language)
         hangup_phrases = [
+            # English
             'bye', 'goodbye', 'thank you', 'thanks', 'end call', 'hang up', 
-            'call khatam', 'call band', 'bye bye', 'tata', 'chalo bye',
-            'call end', 'disconnect', 'close call', 'finish call'
+            'call end', 'disconnect', 'close call', 'finish call',
+            # Hindi
+            'bye bye', 'tata', 'chalo bye', 'call khatam', 'call band', 
+            'dhanyavad', 'shukriya', 'phone kat do', 'call cut', 'call band kar do',
+            # Mixed language
+            'thank you bye', 'bye thank you', 'thank you bye bye', 'bye bye thank you',
+            'shukriya bye', 'bye shukriya', 'dhanyavad bye', 'bye dhanyavad',
+            # Repetitive patterns (user frustration)
+            'phone kat do phone kat do', 'call cut call cut', 'bye bye bye',
+            # Common Hindi goodbye phrases
+            'namaste', 'alvida', 'phir milenge', 'chalo bye bye'
         ]
         
         speech_lower = speech_result.lower().strip()
         if any(phrase in speech_lower for phrase in hangup_phrases):
             print(f"👋 User wants to end call: {speech_result}")
             response = VoiceResponse()
-            response.say("Thank you for calling! Have a great day. Goodbye!", voice=os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna'), language='en-IN')
+            
+            # Detect language for appropriate goodbye message
+            detected_language = detect_language(speech_result)
+            
+            if detected_language in ['hi', 'mixed']:
+                goodbye_message = "Dhanyavad! Aapka din shubh ho. Phir milenge!"
+                voice = os.getenv('TWILIO_VOICE_HI', 'Polly.Aditi')
+                language = 'hi-IN'
+            else:
+                goodbye_message = "Thank you for calling! Have a great day. Goodbye!"
+                voice = os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna')
+                language = 'en-IN'
+            
+            response.say(goodbye_message, voice=voice, language=language)
             response.hangup()
             return str(response)
         
@@ -576,9 +612,24 @@ def create_voice_bot_server():
         
         if speech_result:
             try:
-                # Fast language detection and initialize response
+                # Enhanced language detection with confidence scoring
                 detected_language = detect_language(speech_result)
-                bot_response = ""
+                
+                # Additional validation for mixed language detection
+                if detected_language == 'mixed':
+                    # Check if it's actually Hindi with some English words
+                    hindi_words = ['मैं', 'आप', 'है', 'हैं', 'कर', 'करना', 'चाहिए', 'हो', 'होगा', 'करो', 'करना', 'बताओ', 'दो', 'लो', 'जाओ', 'आओ']
+                    english_words = ['hotel', 'booking', 'book', 'room', 'price', 'budget', 'date', 'time', 'check', 'in', 'out']
+                    
+                    hindi_count = sum(1 for word in hindi_words if word in speech_result)
+                    english_count = sum(1 for word in english_words if word.lower() in speech_result.lower())
+                    
+                    if hindi_count > english_count:
+                        detected_language = 'hi'
+                    elif english_count > hindi_count:
+                        detected_language = 'en'
+                
+                print(f"🌐 Detected language: {detected_language} for: '{speech_result[:30]}...'")
                 
                 # Store language for this call
                 if call_sid:
@@ -817,9 +868,12 @@ def create_voice_bot_server():
                                 else:
                                     return base_prompt + "Respond helpfully and naturally. Keep it brief (max 2 sentences)." + memory_context
                         
-                        # Generate response with memory-aware prompting
+                        # Generate response with memory-aware prompting (optimized for speed)
                         enhanced_prompt = get_memory_aware_prompt(conversation_stage, detected_language, bot_app.call_language[call_sid])
-                        bot_response = bot_app.gpt.ask(f"{enhanced_prompt}\n\nUser: {speech_result}", detected_language)
+                        
+                        # Optimize prompt for faster response
+                        optimized_prompt = f"{enhanced_prompt}\n\nUser: {speech_result}\n\nRespond quickly and concisely:"
+                        bot_response = bot_app.gpt.ask(optimized_prompt, detected_language)
                         
                         # Enforce response length limits based on context
                         def enforce_response_limits(response, stage):
@@ -917,13 +971,20 @@ def create_voice_bot_server():
                         if len(bot_response) != original_length:
                             print(f"⚠️ Response truncated: {original_length} → {len(bot_response)} chars")
                         
-                        # Add bot response to conversation history
-                        bot_app.call_language[call_sid]['conversation_history'].append({
-                            'role': 'assistant',
-                            'content': bot_response,
-                            'timestamp': time.time(),
-                            'stage': conversation_stage
-                        })
+                        # Check if booking is completed and user is satisfied
+                        booking_completed = (
+                            'booking' in bot_response.lower() and 
+                            ('confirm' in bot_response.lower() or 'done' in bot_response.lower() or 'complete' in bot_response.lower())
+                        )
+                        
+                        user_satisfied = any(word in speech_result.lower() for word in [
+                            'thank you', 'thanks', 'shukriya', 'dhanyavad', 'perfect', 'good', 'accha', 'theek hai'
+                        ])
+                        
+                        if booking_completed and user_satisfied:
+                            print("✅ Booking completed and user satisfied - preparing to end call")
+                            # Add a brief confirmation before ending
+                            bot_response += " Have a great day!"
                         
                         # Store last bot response for smart timeout calculation
                         bot_app.call_language[call_sid]['last_bot_response'] = bot_response
@@ -957,7 +1018,20 @@ def create_voice_bot_server():
                 if interruption_mode == 'simple' and ULTRA_SIMPLE_INTERRUPTION_AVAILABLE:
                     print("🎧 Using ultra-simple interruption system for response")
                     from src.ultra_simple_interruption import create_ultra_simple_response
-                    return str(create_ultra_simple_response(call_sid, bot_response, detected_language))
+                    response_twiml = create_ultra_simple_response(call_sid, bot_response, detected_language)
+                    
+                    # Check if we should end the call after successful booking
+                    if booking_completed and user_satisfied:
+                        print("📞 Ending call after successful booking completion")
+                        response = VoiceResponse()
+                        if detected_language in ['hi', 'mixed']:
+                            response.say("Dhanyavad! Aapka din shubh ho. Phir milenge!", voice=os.getenv('TWILIO_VOICE_HI', 'Polly.Aditi'), language='hi-IN')
+                        else:
+                            response.say("Thank you! Have a great day. Goodbye!", voice=os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna'), language='en-IN')
+                        response.hangup()
+                        return str(response)
+                    
+                    return str(response_twiml)
                 elif interruption_mode == 'simple' and SIMPLE_INTERRUPTION_AVAILABLE:
                     print("🎧 Using simple interruption system for response")
                     from src.simple_interruption import create_interruption_response
