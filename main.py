@@ -544,26 +544,61 @@ def create_voice_bot_server():
                 print(f"🔧 Cleaned speech: '{cleaned_speech}'")
                 speech_result = cleaned_speech
         
-        # Check for hang-up phrases (enhanced for Hindi/mixed language)
-        hangup_phrases = [
-            # English
-            'bye', 'goodbye', 'thank you', 'thanks', 'end call', 'hang up', 
-            'call end', 'disconnect', 'close call', 'finish call',
-            # Hindi
-            'bye bye', 'tata', 'chalo bye', 'call khatam', 'call band', 
-            'dhanyavad', 'shukriya', 'phone kat do', 'call cut', 'call band kar do',
-            # Mixed language
-            'thank you bye', 'bye thank you', 'thank you bye bye', 'bye bye thank you',
-            'shukriya bye', 'bye shukriya', 'dhanyavad bye', 'bye dhanyavad',
-            # Repetitive patterns (user frustration)
-            'phone kat do phone kat do', 'call cut call cut', 'bye bye bye',
-            # Common Hindi goodbye phrases
-            'namaste', 'alvida', 'phir milenge', 'chalo bye bye'
-        ]
+        # Enhanced AI-powered call termination detection
+        def should_end_call(speech_text, confidence):
+            """Use AI to determine if user wants to end the call"""
+            speech_lower = speech_text.lower().strip()
+            
+            # Direct hang-up phrases (high confidence)
+            direct_hangup = [
+                'bye', 'goodbye', 'thank you', 'thanks', 'end call', 'hang up', 
+                'call khatam', 'call band', 'bye bye', 'tata', 'chalo bye',
+                'call end', 'disconnect', 'close call', 'finish call',
+                'dhanyavad', 'shukriya', 'phone kat do', 'call cut', 'call band kar do',
+                'namaste', 'alvida', 'phir milenge', 'chalo bye bye'
+            ]
+            
+            # Check for direct phrases first
+            if any(phrase in speech_lower for phrase in direct_hangup):
+                return True, "direct_hangup"
+            
+            # AI analysis for indirect termination signals
+            termination_signals = [
+                # Satisfaction indicators
+                'perfect', 'good', 'accha', 'theek hai', 'sahi hai', 'bilkul theek',
+                'thank you very much', 'dhanyavad', 'shukriya',
+                
+                # Completion indicators
+                'done', 'complete', 'finished', 'ho gaya', 'ho gya', 'khatam',
+                'all set', 'ready', 'booked', 'confirmed',
+                
+                # Frustration indicators
+                'not working', 'not helpful', 'no help', 'useless', 'bekar',
+                'time waste', 'time waste ho raha', 'boring', 'enough',
+                
+                # Repetitive patterns (user frustration)
+                'bye bye bye', 'phone kat do phone kat do', 'call cut call cut',
+                
+                # Mixed language goodbye patterns
+                'thank you bye', 'bye thank you', 'thank you bye bye', 'bye bye thank you',
+                'shukriya bye', 'bye shukriya', 'dhanyavad bye', 'bye dhanyavad'
+            ]
+            
+            # Check for termination signals
+            for signal in termination_signals:
+                if signal in speech_lower:
+                    return True, "termination_signal"
+            
+            # Check for very low confidence + short responses (might be hang-up attempts)
+            if confidence < 0.3 and len(speech_text.strip()) < 10:
+                return True, "low_confidence_short"
+            
+            return False, "continue"
         
-        speech_lower = speech_result.lower().strip()
-        if any(phrase in speech_lower for phrase in hangup_phrases):
-            print(f"👋 User wants to end call: {speech_result}")
+        # Check for call termination
+        should_end, reason = should_end_call(speech_result, speech_confidence)
+        if should_end:
+            print(f"👋 AI detected call termination: {reason} - '{speech_result}'")
             response = VoiceResponse()
             
             # Detect language for appropriate goodbye message
@@ -615,19 +650,24 @@ def create_voice_bot_server():
                 # Enhanced language detection with confidence scoring
                 detected_language = detect_language(speech_result)
                 
-                # Additional validation for mixed language detection
+                # Enhanced mixed language detection with better accuracy
                 if detected_language == 'mixed':
-                    # Check if it's actually Hindi with some English words
-                    hindi_words = ['मैं', 'आप', 'है', 'हैं', 'कर', 'करना', 'चाहिए', 'हो', 'होगा', 'करो', 'करना', 'बताओ', 'दो', 'लो', 'जाओ', 'आओ']
-                    english_words = ['hotel', 'booking', 'book', 'room', 'price', 'budget', 'date', 'time', 'check', 'in', 'out']
+                    # Check for Hindi words and patterns
+                    hindi_words = ['मैं', 'आप', 'है', 'हैं', 'कर', 'करना', 'चाहिए', 'हो', 'होगा', 'करो', 'करना', 'बताओ', 'दो', 'लो', 'जाओ', 'आओ', 'को', 'में', 'से', 'पर', 'के', 'की', 'का', 'हैं', 'थे', 'था', 'थी']
+                    english_words = ['hotel', 'booking', 'book', 'room', 'price', 'budget', 'date', 'time', 'check', 'in', 'out', 'restaurant', 'food', 'eat', 'dinner', 'lunch']
                     
                     hindi_count = sum(1 for word in hindi_words if word in speech_result)
                     english_count = sum(1 for word in english_words if word.lower() in speech_result.lower())
                     
-                    if hindi_count > english_count:
+                    # If user is speaking mixed language, default to mixed for bot response
+                    if hindi_count > 0 and english_count > 0:
+                        detected_language = 'mixed'  # Keep as mixed for Hinglish response
+                    elif hindi_count > english_count:
                         detected_language = 'hi'
                     elif english_count > hindi_count:
                         detected_language = 'en'
+                    else:
+                        detected_language = 'mixed'  # Default to mixed for Indian users
                 
                 print(f"🌐 Detected language: {detected_language} for: '{speech_result[:30]}...'")
                 
@@ -787,11 +827,11 @@ def create_voice_bot_server():
                         # Extract information and generate memory-aware response
                         current_info = extract_and_store_info(speech_result, bot_app.call_language[call_sid])
                         def get_memory_aware_prompt(stage, language, call_data):
-                            # Improve language consistency
+                            # Enhanced language consistency - bot should match user's language
                             if language == 'hi':
                                 base_prompt = "You are Sara, a helpful female AI assistant. Always respond in Hindi/Hinglish. Use Hindi words and phrases naturally. "
                             elif language == 'mixed':
-                                base_prompt = "You are Sara, a helpful female AI assistant. Respond in Hinglish (mix of Hindi and English). Use Hindi words when natural. "
+                                base_prompt = "You are Sara, a helpful female AI assistant. Respond in Hinglish (mix of Hindi and English). Use Hindi words when natural, English for technical terms. "
                             else:
                                 base_prompt = f"You are Sara, a helpful female AI assistant. Respond naturally in {language}. "
                             
@@ -871,8 +911,8 @@ def create_voice_bot_server():
                         # Generate response with memory-aware prompting (optimized for speed)
                         enhanced_prompt = get_memory_aware_prompt(conversation_stage, detected_language, bot_app.call_language[call_sid])
                         
-                        # Optimize prompt for faster response
-                        optimized_prompt = f"{enhanced_prompt}\n\nUser: {speech_result}\n\nRespond quickly and concisely:"
+                        # Optimize prompt for faster response with better context
+                        optimized_prompt = f"{enhanced_prompt}\n\nUser: {speech_result}\n\nRespond quickly, concisely, and naturally in the same language as the user:"
                         bot_response = bot_app.gpt.ask(optimized_prompt, detected_language)
                         
                         # Enforce response length limits based on context

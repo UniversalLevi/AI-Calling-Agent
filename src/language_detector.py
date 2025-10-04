@@ -46,10 +46,17 @@ def detect_language(text: str) -> str:
     lower_text = text.lower()
     hinglish_hits = 0
     hinglish_keywords = [
-        'namaste', 'kaise', 'ho', 'hai', 'haan', 'nahi', 'kripya', 'kripya', 'dhanyavad',
+        'namaste', 'kaise', 'ho', 'hai', 'haan', 'nahi', 'kripya', 'dhanyavad',
         'madad', 'samay', 'tarikh', 'booking', 'pata', 'number', 'bhai', 'didi', 'ji',
         'aap', 'hum', 'mera', 'meri', 'kya', 'kyu', 'kyon', 'kab', 'kahan', 'kidhar',
-        'chahiye', 'chahiyeh', 'karna', 'hoga', 'krna', 'krunga', 'krungi'
+        'chahiye', 'chahiyeh', 'karna', 'hoga', 'krna', 'krunga', 'krungi',
+        # Additional common Hindi transliterated words
+        'mere', 'ko', 'mein', 'ke', 'ki', 'se', 'par', 'tak', 'bhi', 'toh',
+        'book', 'kar', 'karne', 'karo', 'karen', 'karte', 'karta', 'karti',
+        'restaurant', 'hotel', 'room', 'price', 'budget', 'date', 'time',
+        'batao', 'batayen', 'samajh', 'samajhna', 'dekh', 'dekhna', 'sun', 'sunna',
+        'accha', 'theek', 'sahi', 'bilkul', 'zaroor', 'pakka', 'yakin',
+        'kal', 'aaj', 'parso', 'raat', 'din', 'subah', 'shaam'
     ]
     for kw in hinglish_keywords:
         if kw in lower_text:

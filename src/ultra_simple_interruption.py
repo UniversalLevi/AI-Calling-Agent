@@ -53,8 +53,11 @@ class UltraSimpleInterruption:
         self.call_states[call_sid]['last_activity'] = time.time()
         self.call_states[call_sid]['detected_language'] = language
         
-        # Determine STT language based on detected language
-        stt_language = 'hi-IN' if language in ['hi', 'mixed'] else 'en-IN'
+        # Enhanced STT language detection based on conversation context
+        if language in ['hi', 'mixed']:
+            stt_language = 'hi-IN'
+        else:
+            stt_language = 'en-IN'
         
         # Smart timeout adjustment based on conversation context
         smart_timeout = self._calculate_smart_timeout(call_sid, bot_text)
