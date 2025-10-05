@@ -1,0 +1,41 @@
+# Logs
+dashboard.log
+calling_bot.log
+*.log
+
+# Node modules
+node_modules/
+sara-dashboard/node_modules/
+sara-dashboard/backend/node_modules/
+sara-dashboard/frontend/node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build files
+sara-dashboard/frontend/build/
+dist/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+
+

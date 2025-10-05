@@ -34,6 +34,51 @@ except ImportError:
     print("⚠️ python-dotenv not installed. Install with: pip install python-dotenv")
     print("⚠️ Environment variables not loaded from .env file")
 
+# Set up logging for calling bot
+import logging
+from datetime import datetime
+
+def setup_calling_bot_logging():
+    """Set up file logging for the calling bot"""
+    log_dir = "logs"
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Create logger
+    logger = logging.getLogger('calling_bot')
+    logger.setLevel(logging.INFO)
+    
+    # Remove existing handlers to avoid duplicates
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+    
+    # Create file handler
+    log_file = os.path.join(log_dir, 'calling_bot.log')
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    file_handler.setLevel(logging.INFO)
+    
+    # Create formatter
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    
+    # Add handler to logger
+    logger.addHandler(file_handler)
+    
+    return logger
+
+# Initialize logging
+calling_bot_logger = setup_calling_bot_logging()
+
+def log_calling_bot(message, level='info'):
+    """Log message to calling bot log file"""
+    if level == 'error':
+        calling_bot_logger.error(message)
+    elif level == 'warning':
+        calling_bot_logger.warning(message)
+    else:
+        calling_bot_logger.info(message)
+    # Also print to console
+    print(message)
+
 # Clean up old audio files on startup
 def cleanup_startup_audio():
     """Clean up old audio files on startup"""
@@ -225,12 +270,39 @@ def create_voice_bot_server():
         
         caller = request.form.get('From', 'Unknown')
         call_sid = request.form.get('CallSid')
+        to_number = request.form.get('To', 'Unknown')
         
         # Enhanced logging for debugging_ok
         print(f"📞 Incoming call from: {caller}")
         print(f"📞 Call SID: {call_sid}")
         print(f"📞 Request args: {dict(request.args)}")
         print(f"📞 Request form: {dict(request.form)}")
+        
+        # Log to file
+        log_calling_bot(f"📞 Incoming call from: {caller}")
+        log_calling_bot(f"📞 Call SID: {call_sid}")
+        log_calling_bot(f"📞 Request args: {dict(request.args)}")
+        log_calling_bot(f"📞 Request form: {dict(request.form)}")
+        
+        # Initialize call tracking
+        from datetime import datetime
+        if call_sid not in bot_app.call_language:
+            bot_app.call_language[call_sid] = {}
+        if isinstance(bot_app.call_language[call_sid], dict):
+            bot_app.call_language[call_sid]['start_time'] = datetime.now()
+        
+        # Log call start to dashboard
+        try:
+            from src.dashboard_integration import dashboard
+            dashboard.log_call_start({
+                'call_sid': call_sid,
+                'from': caller,
+                'to': to_number,
+                'direction': 'inbound',
+                'language': 'mixed'
+            })
+        except Exception as e:
+            print(f"⚠️ Dashboard logging failed: {e}")
         
         # Check for smart call features
         realtime_mode = request.args.get('realtime', 'false').lower() == 'true'
@@ -527,6 +599,13 @@ def create_voice_bot_server():
         print(f"⚡ Request args: {dict(request.args)}")
         print(f"⚡ Request form: {dict(request.form)}")
         
+        # Log to file
+        log_calling_bot(f"⚡ Processing speech from: {caller}")
+        log_calling_bot(f"⚡ Call SID: {call_sid}")
+        log_calling_bot(f"⚡ Speech result: '{speech_result}'")
+        log_calling_bot(f"⚡ Request args: {dict(request.args)}")
+        log_calling_bot(f"⚡ Request form: {dict(request.form)}")
+        
         # Check if simple interruption mode is active
         interruption_mode = request.args.get('interruption', 'none').lower()
         print(f"⚡ Interruption mode: {interruption_mode}")
@@ -590,8 +669,12 @@ def create_voice_bot_server():
                     return True, "termination_signal"
             
             # Check for very low confidence + short responses (might be hang-up attempts)
-            if confidence < 0.3 and len(speech_text.strip()) < 10:
-                return True, "low_confidence_short"
+            # Only terminate if it's very short (1-2 words) AND contains hang-up indicators
+            if confidence < 0.3 and len(speech_text.strip()) < 5:
+                # Additional check: must contain hang-up words
+                hangup_words = ['bye', 'goodbye', 'stop', 'end', 'quit', 'exit', 'enough', 'bas', 'ruk', 'band']
+                if any(word in speech_lower for word in hangup_words):
+                    return True, "low_confidence_short"
             
             return False, "continue"
         
@@ -615,6 +698,35 @@ def create_voice_bot_server():
             
             response.say(goodbye_message, voice=voice, language=language)
             response.hangup()
+            
+            # Log call end to dashboard
+            try:
+                from src.dashboard_integration import dashboard
+                from datetime import datetime
+                
+                # Calculate call duration (approximate)
+                call_start_time = bot_app.call_language.get(call_sid, {}).get('start_time') if isinstance(bot_app.call_language.get(call_sid), dict) else None
+                duration = 0
+                if call_start_time:
+                    duration = int((datetime.now() - call_start_time).total_seconds())
+                
+                # Get transcript
+                transcript = ""
+                if call_sid in bot_app.call_language and isinstance(bot_app.call_language[call_sid], dict):
+                    history = bot_app.call_language[call_sid].get('conversation_history', [])
+                    transcript = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
+                
+                dashboard.log_call_end({
+                    'call_sid': call_sid,
+                    'status': 'success',
+                    'duration': duration,
+                    'transcript': transcript,
+                    'satisfaction': 'positive',
+                    'metadata': {'reason': reason}
+                })
+            except Exception as e:
+                print(f"⚠️ Dashboard call end logging failed: {e}")
+            
             return str(response)
         
         # Check for interruption first
@@ -1504,7 +1616,7 @@ def start_voice_bot_server():
             import logging
             log = logging.getLogger('werkzeug')
             log.setLevel(logging.ERROR)
-            voice_bot_app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+            voice_bot_app.run(host='0.0.0.0', port=8000, debug=False, use_reloader=False)
         
         bot_thread = threading.Thread(target=run_voice_bot_server, daemon=True)
         bot_thread.start()
@@ -1512,10 +1624,10 @@ def start_voice_bot_server():
         # Wait for server to start
         for i in range(15):
             try:
-                response = requests.get("http://localhost:5000/health", timeout=1)
+                response = requests.get("http://localhost:8000/health", timeout=1)
                 if response.status_code == 200:
                     running_services['voice_bot_server'] = bot_thread
-                    print("✅ Voice bot server started on port 5000!")
+                    print("✅ Voice bot server started on port 8000!")
                     return True
             except:
                 time.sleep(1)
@@ -1539,7 +1651,7 @@ def start_ngrok():
     
     try:
         # Start ngrok
-        ngrok_process = subprocess.Popen(['ngrok', 'http', '5000'], 
+        ngrok_process = subprocess.Popen(['ngrok', 'http', '8000'], 
                                        stdout=subprocess.DEVNULL, 
                                        stderr=subprocess.DEVNULL)
         

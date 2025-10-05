@@ -7,6 +7,10 @@
 *.pem
 *.p12
 *.pfx
+sara-dashboard/backend/.env.local
+sara-dashboard/backend/env.local
+sara-dashboard/frontend/.env.local
+sara-dashboard/frontend/env.local
 
 # Python
 __pycache__/
@@ -50,6 +54,8 @@ audio_files/
 # Logs
 *.log
 logs/
+dashboard.log
+calling_bot.log
 
 # IDE and Editor files
 .vscode/
@@ -98,3 +104,18 @@ Thumbs.db
 # Test files
 test_*.mp3
 test_*.wav
+
+# Node modules
+node_modules/
+sara-dashboard/node_modules/
+sara-dashboard/backend/node_modules/
+sara-dashboard/frontend/node_modules/
+
+# Build files
+sara-dashboard/frontend/build/
+sara-dashboard/frontend/.env
+dist/
+
+# MongoDB data
+data/
+mongodb/
