@@ -198,12 +198,12 @@ class EnhancedHindiTTS:
             # Optimize text for better Hinglish pronunciation
             optimized_text = self._optimize_text_for_tts(text)
             
-            # Generate speech with optimized settings
+            # Generate speech with optimized settings for more natural voice
             response = client.audio.speech.create(
                 model=model,
                 voice=voice,
                 input=optimized_text,
-                speed=1.0,  # Normal speed for natural speech
+                speed=0.9,  # Slightly slower for more natural speech
                 response_format="mp3"
             )
             

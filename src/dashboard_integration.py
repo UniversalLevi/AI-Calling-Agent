@@ -89,6 +89,10 @@ class DashboardIntegration:
             print(f"❌ Transcript update error: {e}")
             return False
     
+    def update_transcript(self, call_sid: str, transcript_text: str) -> bool:
+        """Update call transcript (alias for compatibility)"""
+        return self.update_call_transcript(call_sid, "User", transcript_text)
+    
     def log_call_end(self, call_data: Dict[str, Any]) -> bool:
         """Log when a call ends"""
         if not self.enabled:

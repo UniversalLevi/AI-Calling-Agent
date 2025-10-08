@@ -31,7 +31,10 @@ function App() {
   return (
     <AuthProvider>
       <SocketProvider>
-        <Router>
+        <Router future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true
+        }}>
           <div className="App">
             <Routes>
               {/* Public Routes */}

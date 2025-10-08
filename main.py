@@ -40,9 +40,6 @@ from datetime import datetime
 
 def setup_calling_bot_logging():
     """Set up file logging for the calling bot"""
-    log_dir = "logs"
-    os.makedirs(log_dir, exist_ok=True)
-    
     # Create logger
     logger = logging.getLogger('calling_bot')
     logger.setLevel(logging.INFO)
@@ -51,8 +48,8 @@ def setup_calling_bot_logging():
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
     
-    # Create file handler
-    log_file = os.path.join(log_dir, 'calling_bot.log')
+    # Create file handler - write to root directory
+    log_file = 'calling_bot.log'
     file_handler = logging.FileHandler(log_file, encoding='utf-8')
     file_handler.setLevel(logging.INFO)
     
@@ -336,13 +333,16 @@ def create_voice_bot_server():
                     response_twiml = create_ultra_simple_response(call_sid, greeting_text, 'en')
                     print(f"✅ Ultra-simple response created successfully")
                     print(f"📞 Response length: {len(str(response_twiml))} characters")
+                    log_calling_bot(f"✅ Ultra-simple response created for call {call_sid}")
                     return str(response_twiml)
                 except Exception as e:
                     print(f"❌ Ultra-simple interruption error: {e}")
+                    log_calling_bot(f"❌ Ultra-simple interruption error: {e}")
                     import traceback
                     traceback.print_exc()
                     # Fallback to standard response
                     response.say("Hello! How can I help you?", voice=os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna'), language='en-IN')
+                    log_calling_bot("⚠️ Using fallback response due to ultra-simple interruption error")
                     return str(response)
             elif interruption_mode == 'simple' and SIMPLE_INTERRUPTION_AVAILABLE:
                 print("🎧 Using simple interruption system for greeting")
@@ -759,8 +759,10 @@ def create_voice_bot_server():
         
         if speech_result:
             try:
+                log_calling_bot(f"📝 Processing speech: '{speech_result}'")
                 # Enhanced language detection with confidence scoring
                 detected_language = detect_language(speech_result)
+                log_calling_bot(f"🌐 Detected language: {detected_language}")
                 
                 # Enhanced mixed language detection with better accuracy
                 if detected_language == 'mixed':
