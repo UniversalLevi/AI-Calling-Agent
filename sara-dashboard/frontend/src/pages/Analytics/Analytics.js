@@ -21,7 +21,7 @@ const Analytics = () => {
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/api/calls/analytics?period=${period}`, {
+      const response = await axios.get(`${API_URL}/calls/analytics?period=${period}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

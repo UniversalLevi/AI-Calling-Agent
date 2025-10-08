@@ -26,13 +26,13 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     try {
       const [statsRes, activeRes, recentRes] = await Promise.all([
-        axios.get(`${API_URL}/api/calls/stats`, {
+        axios.get(`${API_URL}/calls/stats`, {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
-        axios.get(`${API_URL}/api/calls/active`, {
+        axios.get(`${API_URL}/calls/active`, {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
-        axios.get(`${API_URL}/api/calls?limit=5&sortBy=createdAt&sortOrder=desc`, {
+        axios.get(`${API_URL}/calls?limit=5&sortBy=createdAt&sortOrder=desc`, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
       ]);
