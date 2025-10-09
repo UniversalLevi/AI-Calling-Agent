@@ -753,13 +753,22 @@ def create_voice_bot_server():
             """Use AI to determine if user wants to end the call"""
             speech_lower = speech_text.lower().strip()
             
-            # Direct hang-up phrases (high confidence)
+            # Direct hang-up phrases (high confidence) - English, Hindi, and Mixed
             direct_hangup = [
+                # English
                 'bye', 'goodbye', 'thank you', 'thanks', 'end call', 'hang up', 
-                'call khatam', 'call band', 'bye bye', 'tata', 'chalo bye',
                 'call end', 'disconnect', 'close call', 'finish call',
-                'dhanyavad', 'shukriya', 'phone kat do', 'call cut', 'call band kar do',
-                'namaste', 'alvida', 'phir milenge', 'chalo bye bye'
+                'bye bye', 'tata', 'chalo bye', 'chalo bye bye',
+                
+                # Hindi (Devanagari script)
+                'बाय', 'बाय बाय', 'बाय बाय बाय', 'थैंक यू', 'धन्यवाद', 'शुक्रिया',
+                'अलविदा', 'फिर मिलेंगे', 'कॉल कट', 'कॉल बंद', 'फोन कट',
+                
+                # Hinglish/Mixed
+                'call khatam', 'call band', 'phone kat do', 'call cut', 'call band kar do',
+                'dhanyavad', 'shukriya', 'namaste', 'alvida', 'phir milenge',
+                'thank you bye', 'bye thank you', 'thank you bye bye', 'bye bye thank you',
+                'shukriya bye', 'bye shukriya', 'dhanyavad bye', 'bye dhanyavad'
             ]
             
             # Check for direct phrases first
