@@ -313,12 +313,13 @@ def create_voice_bot_server():
         # Return a safe TwiML response
         try:
             response = VoiceResponse()
-            response.say("I'm sorry, there was a technical issue. Please try calling again.", voice=os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna'), language='en-IN')
+            response.say("Thank you for calling. Have a great day!", voice=os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna'), language='en-IN')
             response.hangup()
             return str(response)
         except Exception as fallback_error:
             print(f"❌ Fallback error handler failed: {fallback_error}")
-            return "Error occurred", 500
+            # Return minimal TwiML to avoid application error
+            return '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>', 200
     
     # Initialize AI components
     print("🤖 Initializing Enhanced AI components...")
