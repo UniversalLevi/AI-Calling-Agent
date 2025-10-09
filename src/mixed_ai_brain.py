@@ -48,14 +48,6 @@ class MixedOpenAIProvider(MixedAIProvider):
         if language is None:
             language = detect_language(user_text)
         
-        # Check for inappropriate content and redirect to service focus
-        if self._is_inappropriate_content(user_text):
-            return self._get_service_redirect_response(language)
-        
-        # Check if user is asking for non-service related content
-        if self._is_non_service_request(user_text):
-            return self._get_service_focus_response(language)
-        
         # Get appropriate system prompt
         system_prompt = get_language_prompt(language)
         
@@ -81,62 +73,6 @@ class MixedOpenAIProvider(MixedAIProvider):
         except Exception as e:
             print(f"❌ OpenAI error: {e}")
             return get_fallback_message(language)
-    
-    def _is_inappropriate_content(self, text: str) -> bool:
-        """Check if content is inappropriate or offensive"""
-        inappropriate_keywords = [
-            'sex', 'sexy', 'fuck', 'shit', 'damn', 'hell', 'bitch', 'ass', 'chut', 'lund', 'gand',
-            'mar', 'maar', 'kill', 'die', 'hate', 'stupid', 'idiot', 'moron', 'fool'
-        ]
-        
-        text_lower = text.lower()
-        return any(keyword in text_lower for keyword in inappropriate_keywords)
-    
-    def _is_non_service_request(self, text: str) -> bool:
-        """Check if user is asking for non-service related content"""
-        non_service_keywords = [
-            'girlfriend', 'boyfriend', 'date', 'marry', 'marriage', 'love', 'relationship',
-            'personal', 'private', 'family', 'friend', 'social', 'chat', 'talk', 'conversation',
-            'joke', 'funny', 'entertainment', 'game', 'play', 'music', 'movie', 'song'
-        ]
-        
-        # Service-related keywords that should NOT be blocked (English + Hindi/Hinglish)
-        service_keywords = [
-            # English service keywords
-            'hotel', 'restaurant', 'booking', 'reservation', 'travel', 'trip', 'visit', 'place',
-            'tour', 'sightseeing', 'attraction', 'destination', 'city', 'jaipur', 'delhi', 'mumbai',
-            'recommendation', 'suggest', 'help', 'service', 'plan', 'planning', 'book', 'bikaner',
-            
-            # Hindi/Hinglish service keywords
-            'book karo', 'book karna', 'book kar', 'booking karo', 'booking karna',
-            'hotel book', 'restaurant book', 'travel book', 'trip book',
-            'ghumne', 'ghumna', 'jane', 'jana', 'dekhne', 'dekhna',
-            'suggest karo', 'suggest karna', 'help karo', 'help karna',
-            'plan karo', 'plan karna', 'arrange karo', 'arrange karna'
-        ]
-        
-        text_lower = text.lower()
-        
-        # If it contains service keywords, it's a service request
-        if any(keyword in text_lower for keyword in service_keywords):
-            return False
-        
-        # Otherwise check for non-service keywords
-        return any(keyword in text_lower for keyword in non_service_keywords)
-    
-    def _get_service_redirect_response(self, language: str) -> str:
-        """Get response redirecting to service focus"""
-        if language in ['hi', 'mixed']:
-            return "Main yahan aapki service ke liye hun. Kya main aapki koi help kar sakta hun? Restaurant booking, hotel reservation, ya koi aur service?"
-        else:
-            return "I'm here to help you with services. How can I assist you today? Restaurant booking, hotel reservation, or any other service?"
-    
-    def _get_service_focus_response(self, language: str) -> str:
-        """Get response focusing on services"""
-        if language in ['hi', 'mixed']:
-            return "Main sirf services provide karta hun - restaurant booking, hotel reservation, travel planning. Aap kya service chahte hain?"
-        else:
-            return "I only provide services - restaurant booking, hotel reservation, travel planning. What service do you need?"
 
 
 class MixedGeminiProvider(MixedAIProvider):
@@ -165,14 +101,6 @@ class MixedGeminiProvider(MixedAIProvider):
         if language is None:
             language = detect_language(user_text)
         
-        # Check for inappropriate content and redirect to service focus
-        if self._is_inappropriate_content(user_text):
-            return self._get_service_redirect_response(language)
-        
-        # Check if user is asking for non-service related content
-        if self._is_non_service_request(user_text):
-            return self._get_service_focus_response(language)
-        
         # Get appropriate system prompt
         system_prompt = get_language_prompt(language)
         
@@ -198,62 +126,6 @@ class MixedGeminiProvider(MixedAIProvider):
         except Exception as e:
             print(f"❌ Gemini error: {e}")
             return get_fallback_message(language)
-    
-    def _is_inappropriate_content(self, text: str) -> bool:
-        """Check if content is inappropriate or offensive"""
-        inappropriate_keywords = [
-            'sex', 'sexy', 'fuck', 'shit', 'damn', 'hell', 'bitch', 'ass', 'chut', 'lund', 'gand',
-            'mar', 'maar', 'kill', 'die', 'hate', 'stupid', 'idiot', 'moron', 'fool'
-        ]
-        
-        text_lower = text.lower()
-        return any(keyword in text_lower for keyword in inappropriate_keywords)
-    
-    def _is_non_service_request(self, text: str) -> bool:
-        """Check if user is asking for non-service related content"""
-        non_service_keywords = [
-            'girlfriend', 'boyfriend', 'date', 'marry', 'marriage', 'love', 'relationship',
-            'personal', 'private', 'family', 'friend', 'social', 'chat', 'talk', 'conversation',
-            'joke', 'funny', 'entertainment', 'game', 'play', 'music', 'movie', 'song'
-        ]
-        
-        # Service-related keywords that should NOT be blocked (English + Hindi/Hinglish)
-        service_keywords = [
-            # English service keywords
-            'hotel', 'restaurant', 'booking', 'reservation', 'travel', 'trip', 'visit', 'place',
-            'tour', 'sightseeing', 'attraction', 'destination', 'city', 'jaipur', 'delhi', 'mumbai',
-            'recommendation', 'suggest', 'help', 'service', 'plan', 'planning', 'book', 'bikaner',
-            
-            # Hindi/Hinglish service keywords
-            'book karo', 'book karna', 'book kar', 'booking karo', 'booking karna',
-            'hotel book', 'restaurant book', 'travel book', 'trip book',
-            'ghumne', 'ghumna', 'jane', 'jana', 'dekhne', 'dekhna',
-            'suggest karo', 'suggest karna', 'help karo', 'help karna',
-            'plan karo', 'plan karna', 'arrange karo', 'arrange karna'
-        ]
-        
-        text_lower = text.lower()
-        
-        # If it contains service keywords, it's a service request
-        if any(keyword in text_lower for keyword in service_keywords):
-            return False
-        
-        # Otherwise check for non-service keywords
-        return any(keyword in text_lower for keyword in non_service_keywords)
-    
-    def _get_service_redirect_response(self, language: str) -> str:
-        """Get response redirecting to service focus"""
-        if language in ['hi', 'mixed']:
-            return "Main yahan aapki service ke liye hun. Kya main aapki koi help kar sakta hun? Restaurant booking, hotel reservation, ya koi aur service?"
-        else:
-            return "I'm here to help you with services. How can I assist you today? Restaurant booking, hotel reservation, or any other service?"
-    
-    def _get_service_focus_response(self, language: str) -> str:
-        """Get response focusing on services"""
-        if language in ['hi', 'mixed']:
-            return "Main sirf services provide karta hun - restaurant booking, hotel reservation, travel planning. Aap kya service chahte hain?"
-        else:
-            return "I only provide services - restaurant booking, hotel reservation, travel planning. What service do you need?"
 
 
 class MixedAIBrain:
