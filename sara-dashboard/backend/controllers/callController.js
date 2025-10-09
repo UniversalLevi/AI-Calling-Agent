@@ -223,6 +223,23 @@ const deleteCallLog = asyncHandler(async (req, res) => {
 // @route   GET /api/calls/active
 // @access  Private
 const getActiveCalls = asyncHandler(async (req, res) => {
+  // First, cleanup any stuck calls (older than 1 hour)
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  await CallLog.updateMany(
+    { 
+      status: 'in-progress',
+      startTime: { $lt: oneHourAgo }
+    },
+    { 
+      status: 'failed',
+      endTime: new Date(),
+      metadata: { 
+        cleanup_reason: 'stuck_call_timeout',
+        original_status: 'in-progress'
+      }
+    }
+  );
+
   const activeCalls = await CallLog.find({ 
     status: 'in-progress' 
   }).sort({ startTime: -1 });
@@ -366,6 +383,36 @@ const getStatusDistribution = async (startDate) => {
   ]);
 };
 
+// @desc    Cleanup stuck calls
+// @route   POST /api/calls/cleanup
+// @access  Private
+const cleanupStuckCalls = asyncHandler(async (req, res) => {
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  
+  const result = await CallLog.updateMany(
+    { 
+      status: 'in-progress',
+      startTime: { $lt: oneHourAgo }
+    },
+    { 
+      status: 'failed',
+      endTime: new Date(),
+      metadata: { 
+        cleanup_reason: 'manual_cleanup',
+        original_status: 'in-progress'
+      }
+    }
+  );
+
+  res.json({
+    success: true,
+    message: 'Cleaned up ' + result.modifiedCount + ' stuck calls',
+    data: {
+      modifiedCount: result.modifiedCount
+    }
+  });
+});
+
 module.exports = {
   getCallLogs,
   getCallStats,
@@ -376,5 +423,6 @@ module.exports = {
   deleteCallLog,
   getActiveCalls,
   terminateCall,
-  getCallAnalytics
+  getCallAnalytics,
+  cleanupStuckCalls
 };

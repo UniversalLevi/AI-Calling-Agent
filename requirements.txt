@@ -23,3 +23,6 @@ websockets==12.0
 pyaudio==0.2.14
 wave==0.0.2
 
+# WebSocket client for dashboard integration
+python-socketio==5.10.0
+

@@ -184,7 +184,7 @@ class EnhancedHindiTTS:
             api_key = os.getenv('OPENAI_API_KEY')
             model = os.getenv('OPENAI_TTS_MODEL', 'tts-1-hd')  # Use HD model for better quality
             
-            # Use female voice for Sara with optimized settings
+            # Use female voice for Sara with optimized settings for more natural speech
             voice = os.getenv('OPENAI_TTS_VOICE', 'nova')  # Nova is a female voice
             
             client = openai.OpenAI(api_key=api_key)
@@ -198,7 +198,7 @@ class EnhancedHindiTTS:
             # Optimize text for better Hinglish pronunciation
             optimized_text = self._optimize_text_for_tts(text)
             
-            # Generate speech with optimized settings for more natural voice
+            # Generate speech with optimized settings for more natural, human-like voice
             response = client.audio.speech.create(
                 model=model,
                 voice=voice,
@@ -220,6 +220,10 @@ class EnhancedHindiTTS:
     
     def _optimize_text_for_tts(self, text: str) -> str:
         """Optimize text for better TTS pronunciation, especially for Hindi/Hinglish"""
+        
+        # Add natural pauses and speech patterns for more human-like delivery
+        text = self._add_natural_pauses(text)
+        
         # Comprehensive Hindi to Romanized transliteration for better TTS
         replacements = {
             # Basic pronouns and common words
@@ -444,6 +448,37 @@ class EnhancedHindiTTS:
         optimized_text = optimized_text.strip()  # Remove leading/trailing spaces
         
         return optimized_text
+    
+    def _add_natural_pauses(self, text: str) -> str:
+        """Add natural pauses and speech patterns for more human-like delivery"""
+        # Add subtle pauses after punctuation for more natural flow
+        text = text.replace(',', ', ')
+        text = text.replace('.', '. ')
+        text = text.replace('!', '! ')
+        text = text.replace('?', '? ')
+        
+        # Add natural pauses for common Hindi/English transitions
+        text = text.replace(' और ', ' aur ')
+        text = text.replace(' तो ', ' to ')
+        text = text.replace(' लेकिन ', ' lekin ')
+        text = text.replace(' क्योंकि ', ' kyunki ')
+        
+        # Add emphasis for important words (subtle)
+        text = text.replace(' धन्यवाद ', ' dhanyavaad ')
+        text = text.replace(' शुक्रिया ', ' shukriya ')
+        text = text.replace(' नमस्ते ', ' namaste ')
+        
+        # Add natural breathing pauses for longer sentences
+        sentences = text.split('.')
+        if len(sentences) > 1:
+            # Add slight pause between sentences
+            text = '. '.join(sentences)
+        
+        # Clean up multiple spaces
+        import re
+        text = re.sub(r'\s+', ' ', text)
+        
+        return text.strip()
     
     def speak_hindi_gtts(self, text: str) -> Optional[str]:
         """Generate Hindi speech using gTTS (fallback)"""

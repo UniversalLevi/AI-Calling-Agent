@@ -100,14 +100,25 @@ export const AuthProvider = ({ children }) => {
     }
   }, [state.token]);
 
-  // Load user on app start
+  // Load user on app start and handle token validation
   useEffect(() => {
-    if (state.token && !state.user) {
-      loadUser();
-    } else if (!state.token) {
-      dispatch({ type: AUTH_ACTIONS.LOAD_USER_FAILURE });
-    }
-  }, [state.token]);
+    const initializeAuth = async () => {
+      if (state.token) {
+        try {
+          // Validate token and load user
+          await loadUser();
+        } catch (error) {
+          console.error('Token validation failed:', error);
+          // Token is invalid, clear it
+          dispatch({ type: AUTH_ACTIONS.LOGOUT });
+        }
+      } else {
+        dispatch({ type: AUTH_ACTIONS.LOAD_USER_FAILURE });
+      }
+    };
+
+    initializeAuth();
+  }, []); // Only run once on mount
 
   // Login function
   const login = async (credentials) => {
@@ -156,7 +167,10 @@ export const AuthProvider = ({ children }) => {
         payload: { user }
       });
       
+      return user; // Return user for success
+      
     } catch (error) {
+      console.error('Load user error:', error);
       dispatch({
         type: AUTH_ACTIONS.LOAD_USER_FAILURE,
         payload: 'Failed to load user'
@@ -166,6 +180,8 @@ export const AuthProvider = ({ children }) => {
       if (error.response?.status === 401) {
         logout();
       }
+      
+      throw error; // Re-throw for caller to handle
     }
   };
 

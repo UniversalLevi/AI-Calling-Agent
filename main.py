@@ -103,6 +103,101 @@ def cleanup_startup_audio():
     except Exception as e:
         print(f"⚠️ Startup cleanup error: {e}")
 
+def clean_speech_result(speech_text: str) -> str:
+    """Clean up common STT errors and improve speech recognition"""
+    if not speech_text:
+        return speech_text
+    
+    # Common STT error patterns
+    replacements = {
+        # Duplicate words
+        'hotel hotel': 'hotel',
+        'booking booking': 'booking',
+        'restaurant restaurant': 'restaurant',
+        'room room': 'room',
+        'table table': 'table',
+        'call call': 'call',
+        
+        # Common misrecognitions
+        'to to': 'to',
+        'for for': 'for',
+        'the the': 'the',
+        'and and': 'and',
+        'or or': 'or',
+        
+        # Hindi-English mix corrections
+        'hotel mein': 'hotel me',
+        'restaurant mein': 'restaurant me',
+        'room mein': 'room me',
+        
+        # Common phonetic errors
+        'reservation': 'reservation',
+        'accommodation': 'accommodation',
+        'recommendation': 'recommendation',
+    }
+    
+    cleaned_text = speech_text
+    for old, new in replacements.items():
+        cleaned_text = cleaned_text.replace(old, new)
+    
+    # Remove extra spaces
+    import re
+    cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+    
+    return cleaned_text
+
+def detect_language_dynamically(speech_text: str, call_sid: str = None, confidence: float = 1.0) -> str:
+    """Enhanced dynamic language detection based on user patterns and confidence"""
+    if not speech_text:
+        return 'en'  # Default to English
+    
+    # Import detect_language function
+    try:
+        from src.language_detector import detect_language
+    except ImportError:
+        # Fallback simple detection
+        hindi_words = ['मैं', 'आप', 'है', 'हैं', 'कर', 'करना', 'चाहिए', 'हो', 'होगा']
+        if any(word in speech_text for word in hindi_words):
+            return 'hi'
+        else:
+            return 'en'
+    
+    # Get basic language detection
+    basic_language = detect_language(speech_text)
+    
+    # If confidence is very low, be more conservative
+    if confidence < 0.3:
+        # For low confidence, prefer English unless clearly Hindi
+        hindi_indicators = ['मैं', 'आप', 'है', 'हैं', 'कर', 'करना', 'चाहिए', 'हो', 'होगा']
+        if any(word in speech_text for word in hindi_indicators):
+            return 'hi'
+        else:
+            return 'en'
+    
+    # Enhanced mixed language detection
+    if basic_language == 'mixed':
+        # Check for specific patterns
+        hindi_words = ['मैं', 'आप', 'है', 'हैं', 'कर', 'करना', 'चाहिए', 'हो', 'होगा', 'करो', 'करना', 'बताओ', 'दो', 'लो', 'जाओ', 'आओ', 'को', 'में', 'से', 'पर', 'के', 'की', 'का', 'हैं', 'थे', 'था', 'थी', 'क्या', 'कैसे', 'कहाँ', 'कब', 'क्यों']
+        english_words = ['hotel', 'booking', 'book', 'room', 'price', 'budget', 'date', 'time', 'check', 'in', 'out', 'restaurant', 'food', 'eat', 'dinner', 'lunch', 'help', 'service', 'please', 'thank', 'you']
+        
+        hindi_count = sum(1 for word in hindi_words if word in speech_text)
+        english_count = sum(1 for word in english_words if word.lower() in speech_text.lower())
+        
+        # Dynamic decision based on ratios
+        total_words = len(speech_text.split())
+        if total_words > 0:
+            hindi_ratio = hindi_count / total_words
+            english_ratio = english_count / total_words
+            
+            if hindi_ratio > 0.3:
+                return 'hi'
+            elif english_ratio > 0.3:
+                return 'en'
+            else:
+                return 'mixed'  # Keep as mixed for Hinglish response
+    
+    return basic_language
+
 # Run startup cleanup
 cleanup_startup_audio()
 
@@ -206,6 +301,24 @@ def create_voice_bot_server():
     """Create the voice bot server Flask app"""
     bot_app = Flask(__name__)
     bot_app.config['DEBUG'] = True  # Enable debug mode
+    
+    # Global error handler for unhandled exceptions
+    @bot_app.errorhandler(Exception)
+    def handle_exception(e):
+        """Global error handler to prevent crashes"""
+        print(f"❌ Unhandled exception: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Return a safe TwiML response
+        try:
+            response = VoiceResponse()
+            response.say("I'm sorry, there was a technical issue. Please try calling again.", voice=os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna'), language='en-IN')
+            response.hangup()
+            return str(response)
+        except Exception as fallback_error:
+            print(f"❌ Fallback error handler failed: {fallback_error}")
+            return "Error occurred", 500
     
     # Initialize AI components
     print("🤖 Initializing Enhanced AI components...")
@@ -504,8 +617,8 @@ def create_voice_bot_server():
         if speech_result:
             try:
                 print(f"📝 Processing speech: '{speech_result}'")
-                # Detect language
-                detected_language = detect_language(speech_result)
+                # Enhanced dynamic language detection
+                detected_language = detect_language_dynamically(speech_result, call_sid, speech_confidence)
                 print(f"🌐 Detected language: {detected_language}")
                 # Persist per-call language
                 if call_sid:
@@ -610,15 +723,27 @@ def create_voice_bot_server():
         interruption_mode = request.args.get('interruption', 'none').lower()
         print(f"⚡ Interruption mode: {interruption_mode}")
         
-        # Enhanced STT confidence check
+        # Enhanced STT confidence check with dynamic handling
         speech_confidence = float(request.form.get('Confidence', '0.0'))
         print(f"🎤 Speech confidence: {speech_confidence:.2f}")
         
-        # If confidence is very low, try to improve the result
-        if speech_confidence < 0.3 and speech_result:
+        # Dynamic confidence-based processing
+        if speech_confidence < 0.2:
+            print(f"⚠️ Very low confidence speech: '{speech_result}' - confidence: {speech_confidence}")
+            # For very low confidence, ask for clarification
+            response = VoiceResponse()
+            # Detect language for appropriate clarification message
+            detected_language = detect_language_dynamically(speech_result, call_sid, speech_confidence)
+            if detected_language in ['hi', 'mixed']:
+                response.say("Maaf kariye, main samajh nahi paya. Kya aap phir se bol sakte hain?", voice=os.getenv('TWILIO_VOICE_HI', 'Polly.Aditi'), language='hi-IN')
+            else:
+                response.say("Sorry, I didn't catch that. Could you please repeat?", voice=os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna'), language='en-IN')
+            response.redirect(f"/voice?realtime=true&interruption=simple&media_streams=true")
+            return str(response)
+        elif speech_confidence < 0.5:
             print(f"⚠️ Low confidence speech: '{speech_result}' - confidence: {speech_confidence}")
             # Try to clean up common STT errors
-            cleaned_speech = speech_result.replace('hotel hotel', 'hotel').replace('booking booking', 'booking')
+            cleaned_speech = clean_speech_result(speech_result)
             if cleaned_speech != speech_result:
                 print(f"🔧 Cleaned speech: '{cleaned_speech}'")
                 speech_result = cleaned_speech
@@ -1125,6 +1250,10 @@ def create_voice_bot_server():
                         if len(bot_response) != original_length:
                             print(f"⚠️ Response truncated: {original_length} → {len(bot_response)} chars")
                         
+                        # Initialize booking completion variables
+                        booking_completed = False
+                        user_satisfied = False
+                        
                         # Check if booking is completed and user is satisfied
                         booking_completed = (
                             'booking' in bot_response.lower() and 
@@ -1232,7 +1361,17 @@ def create_voice_bot_server():
                 print(f"   Speech Result: {request.form.get('SpeechResult', 'None')}")
                 print(f"   Call SID: {request.form.get('CallSid', 'None')}")
                 print(f"   From: {request.form.get('From', 'None')}")
-                response.say("Sorry, there was an error. Please try again.")
+                
+                # Create a safe fallback response
+                try:
+                    response = VoiceResponse()
+                    response.say("Sorry, there was an error. Please try again.", voice=os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna'), language='en-IN')
+                    response.redirect(f"/voice?realtime=true&interruption=simple&media_streams=true")
+                    return str(response)
+                except Exception as fallback_error:
+                    print(f"❌ Fallback response error: {fallback_error}")
+                    # Last resort - return empty response
+                    return ""
             
             # Smart timeout based on bot response length and conversation context
             call_data = bot_app.call_language.get(call_sid, {})
@@ -1468,10 +1607,52 @@ def create_voice_bot_server():
     
     @bot_app.route('/status', methods=['POST'])
     def status():
-        call_sid = request.form.get('CallSid')
-        call_status = request.form.get('CallStatus')
-        print(f"📊 Call {call_sid} status: {call_status}")
-        return "OK"
+        """Handle call status updates from Twilio"""
+        try:
+            call_sid = request.form.get('CallSid')
+            call_status = request.form.get('CallStatus')
+            call_duration = request.form.get('CallDuration', '0')
+            
+            print(f"📞 Call status update: {call_sid} -> {call_status} (Duration: {call_duration}s)")
+            
+            # Handle different call statuses
+            if call_status in ['completed', 'failed', 'busy', 'no-answer', 'canceled']:
+                print(f"📞 Call ended: {call_sid} with status: {call_status}")
+                
+                # Calculate duration
+                duration = int(call_duration) if call_duration.isdigit() else 0
+                
+                # Get transcript if available
+                transcript = ""
+                if call_sid in bot_app.call_language and isinstance(bot_app.call_language[call_sid], dict):
+                    history = bot_app.call_language[call_sid].get('conversation_history', [])
+                    transcript = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
+                
+                # Log call end to dashboard
+                try:
+                    from src.dashboard_integration import dashboard
+                    dashboard.log_call_end({
+                        'call_sid': call_sid,
+                        'status': 'success' if call_status == 'completed' else 'failed',
+                        'duration': duration,
+                        'transcript': transcript,
+                        'satisfaction': 'positive' if call_status == 'completed' else 'negative',
+                        'metadata': {'twilio_status': call_status}
+                    })
+                    print(f"✅ Call end logged to dashboard: {call_sid}")
+                except Exception as e:
+                    print(f"⚠️ Dashboard call end logging failed: {e}")
+                
+                # Clean up call data
+                if call_sid in bot_app.call_language:
+                    del bot_app.call_language[call_sid]
+                    print(f"🧹 Cleaned up call data for: {call_sid}")
+            
+            return '', 200
+            
+        except Exception as e:
+            print(f"❌ Status callback error: {e}")
+            return '', 500
     
     @bot_app.route('/media/<call_sid>', methods=['POST'])
     def handle_media_stream(call_sid):
@@ -1952,11 +2133,14 @@ def make_websocket_interruption_call(phone_number: str):
             incoming_numbers[0].update(voice_url=webhook_url)
             print("🔄 Updated webhook for WebSocket interruption mode")
         
-        # Make the call
+        # Make the call with status callback
+        status_callback_url = f"{ngrok_url}/status"
         call = client.calls.create(
             to=phone_number,
             from_=twilio_phone,
-            url=webhook_url
+            url=webhook_url,
+            status_callback=status_callback_url,
+            status_callback_event=['completed', 'failed', 'busy', 'no-answer', 'canceled']
         )
         
         print(f"✅ WebSocket interruption call initiated!")
@@ -2027,11 +2211,14 @@ def make_smart_call(phone_number: str):
             incoming_numbers[0].update(voice_url=webhook_url)
             print("🔄 Updated webhook for smart call mode")
         
-        # Make the call
+        # Make the call with status callback
+        status_callback_url = f"{ngrok_url}/status"
         call = client.calls.create(
             to=phone_number,
             from_=twilio_phone,
-            url=webhook_url
+            url=webhook_url,
+            status_callback=status_callback_url,
+            status_callback_event=['completed', 'failed', 'busy', 'no-answer', 'canceled']
         )
         
         print(f"✅ Smart call initiated!")
@@ -2081,11 +2268,14 @@ def make_simple_interruption_call(phone_number: str):
             incoming_numbers[0].update(voice_url=webhook_url)
             print("🔄 Updated webhook for simple interruption mode")
         
-        # Make the call
+        # Make the call with status callback
+        status_callback_url = f"{ngrok_url}/status"
         call = client.calls.create(
             to=phone_number,
             from_=twilio_phone,
-            url=webhook_url
+            url=webhook_url,
+            status_callback=status_callback_url,
+            status_callback_event=['completed', 'failed', 'busy', 'no-answer', 'canceled']
         )
         
         print(f"✅ Simple interruption call initiated!")

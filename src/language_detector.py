@@ -56,7 +56,14 @@ def detect_language(text: str) -> str:
         'restaurant', 'hotel', 'room', 'price', 'budget', 'date', 'time',
         'batao', 'batayen', 'samajh', 'samajhna', 'dekh', 'dekhna', 'sun', 'sunna',
         'accha', 'theek', 'sahi', 'bilkul', 'zaroor', 'pakka', 'yakin',
-        'kal', 'aaj', 'parso', 'raat', 'din', 'subah', 'shaam'
+        'kal', 'aaj', 'parso', 'raat', 'din', 'subah', 'shaam',
+        # Enhanced Hinglish patterns
+        'book karo', 'book karna', 'book kar', 'booking karo', 'booking karna',
+        'hotel book', 'restaurant book', 'travel book', 'trip book',
+        'ghumne', 'ghumna', 'jane', 'jana', 'dekhne', 'dekhna',
+        'suggest karo', 'suggest karna', 'help karo', 'help karna',
+        'plan karo', 'plan karna', 'arrange karo', 'arrange karna',
+        'han', 'hain', 'hai', 'ho', 'hoga', 'hogi', 'honge'
     ]
     for kw in hinglish_keywords:
         if kw in lower_text:
@@ -66,9 +73,9 @@ def detect_language(text: str) -> str:
         return 'hi'
     elif english_percentage >= 70 and hinglish_hits == 0:
         return 'en'
-    elif hinglish_hits >= 2 and english_percentage >= 40 and hindi_percentage < 10:
-        return 'mixed'
-    elif english_percentage >= 50 and hindi_percentage < 10 and hinglish_hits <= 1:
+    elif hinglish_hits >= 1 and english_percentage >= 30 and hindi_percentage < 20:
+        return 'mixed'  # More sensitive to Hinglish detection
+    elif english_percentage >= 50 and hindi_percentage < 10 and hinglish_hits == 0:
         return 'en'
     else:
         return 'mixed'

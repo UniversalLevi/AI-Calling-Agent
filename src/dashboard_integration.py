@@ -9,6 +9,12 @@ import json
 from datetime import datetime
 from typing import Dict, Any, Optional
 
+# Import WebSocket client for real-time updates
+try:
+    from .websocket_client import websocket_client
+except ImportError:
+    from websocket_client import websocket_client
+
 class DashboardIntegration:
     """Integration with Sara Dashboard for real-time call logging"""
     
@@ -30,7 +36,10 @@ class DashboardIntegration:
         """Log when a call starts"""
         if not self.enabled:
             return False
-            
+        
+        success = False
+        
+        # 1. Log to database via HTTP API
         try:
             payload = {
                 'callId': call_data.get('call_sid', ''),
@@ -57,20 +66,43 @@ class DashboardIntegration:
             
             if response.status_code in [200, 201]:
                 print(f"📊 Call logged to dashboard: {call_data.get('call_sid')}")
-                return True
+                success = True
+            elif response.status_code == 400:
+                # Check if it's a duplicate call ID error
+                try:
+                    error_data = response.json()
+                    if 'duplicate' in str(error_data).lower() or 'already exists' in str(error_data).lower():
+                        print(f"⚠️ Call already exists in dashboard: {call_data.get('call_sid')}")
+                        success = True  # Treat as success since call exists
+                    else:
+                        print(f"⚠️ Dashboard validation error (400): {error_data}")
+                except:
+                    print(f"⚠️ Dashboard validation error (400): {response.text}")
+            elif response.status_code == 429:
+                print(f"⚠️ Dashboard rate limited (429) - skipping HTTP logging")
+                success = False  # Don't treat as error, just skip
             else:
                 print(f"⚠️ Dashboard logging failed: {response.status_code}")
-                return False
                 
         except Exception as e:
             print(f"❌ Dashboard integration error: {e}")
-            return False
+        
+        # 2. Emit real-time WebSocket event for instant updates
+        try:
+            websocket_client.emit_call_started(call_data)
+        except Exception as e:
+            print(f"❌ WebSocket emit error: {e}")
+        
+        return success
     
     def update_call_transcript(self, call_sid: str, speaker: str, text: str) -> bool:
         """Update call transcript in real-time"""
         if not self.enabled:
             return False
-            
+        
+        success = False
+        
+        # 1. Update database via HTTP API
         try:
             payload = {
                 'transcript': f"{speaker}: {text}\n"
@@ -83,11 +115,18 @@ class DashboardIntegration:
                 timeout=5
             )
             
-            return response.status_code == 200
+            success = response.status_code == 200
                 
         except Exception as e:
             print(f"❌ Transcript update error: {e}")
-            return False
+        
+        # 2. Emit real-time WebSocket event
+        try:
+            websocket_client.emit_transcript_update(call_sid, speaker, text)
+        except Exception as e:
+            print(f"❌ WebSocket transcript emit error: {e}")
+        
+        return success
     
     def update_transcript(self, call_sid: str, transcript_text: str) -> bool:
         """Update call transcript (alias for compatibility)"""
@@ -97,7 +136,10 @@ class DashboardIntegration:
         """Log when a call ends"""
         if not self.enabled:
             return False
-            
+        
+        success = False
+        
+        # 1. Update database via HTTP API
         try:
             call_sid = call_data.get('call_sid', '')
             payload = {
@@ -119,35 +161,50 @@ class DashboardIntegration:
             
             if response.status_code == 200:
                 print(f"📊 Call completed and logged: {call_sid}")
-                return True
+                success = True
             else:
                 print(f"⚠️ Call end logging failed: {response.status_code}")
-                return False
                 
         except Exception as e:
             print(f"❌ Call end logging error: {e}")
-            return False
+        
+        # 2. Emit real-time WebSocket event
+        try:
+            websocket_client.emit_call_ended(call_data)
+        except Exception as e:
+            print(f"❌ WebSocket call-end emit error: {e}")
+        
+        return success
     
     def send_live_event(self, event_type: str, data: Dict[str, Any]) -> bool:
         """Send live event to dashboard via WebSocket"""
         if not self.enabled:
             return False
-            
+        
         try:
-            payload = {
-                'type': event_type,
-                'data': data,
-                'timestamp': datetime.now().isoformat()
-            }
+            # Use WebSocket for instant updates
+            if event_type == 'call-interrupted':
+                websocket_client.emit_call_interrupted(data.get('call_sid', ''), data)
+            elif event_type == 'call-updated':
+                websocket_client.emit_call_updated(data.get('call_sid', ''), data)
+            else:
+                # Fallback to HTTP API
+                payload = {
+                    'type': event_type,
+                    'data': data,
+                    'timestamp': datetime.now().isoformat()
+                }
+                
+                response = requests.post(
+                    f'{self.dashboard_url}/api/events',
+                    json=payload,
+                    headers=self._get_headers(),
+                    timeout=5
+                )
+                
+                return response.status_code == 200
             
-            response = requests.post(
-                f'{self.dashboard_url}/api/events',
-                json=payload,
-                headers=self._get_headers(),
-                timeout=5
-            )
-            
-            return response.status_code == 200
+            return True
                 
         except Exception as e:
             print(f"❌ Live event error: {e}")
@@ -155,4 +212,3 @@ class DashboardIntegration:
 
 # Global instance
 dashboard = DashboardIntegration()
-

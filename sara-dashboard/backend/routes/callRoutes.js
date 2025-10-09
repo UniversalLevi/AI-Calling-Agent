@@ -15,7 +15,8 @@ const {
   deleteCallLog,
   getActiveCalls,
   terminateCall,
-  getCallAnalytics
+  getCallAnalytics,
+  cleanupStuckCalls
 } = require('../controllers/callController');
 
 const { authMiddleware, authorize, requirePermission } = require('../middleware/authMiddleware');
@@ -30,6 +31,7 @@ router.get('/stats', getCallStats);
 router.get('/analytics', getCallAnalytics);
 router.get('/active', getActiveCalls);
 router.get('/', getCallLogs);
+router.post('/cleanup', cleanupStuckCalls);
 
 // Apply authentication to remaining routes
 router.use(authMiddleware);

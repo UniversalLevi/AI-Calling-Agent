@@ -18,13 +18,25 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 30000); // Refresh every 30s
-    return () => clearInterval(interval);
-  }, []);
+    if (token && user) {
+      fetchDashboardData();
+        const interval = setInterval(fetchDashboardData, 30000); // Refresh every 30s
+      return () => clearInterval(interval);
+    }
+  }, [token, user]);
 
   const fetchDashboardData = async () => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    
     try {
+      // Only show loading on initial load, not on refreshes
+      if (stats.totalCalls === 0 && activeCalls.length === 0 && recentCalls.length === 0) {
+        setLoading(true);
+      }
+      
       const [statsRes, activeRes, recentRes] = await Promise.all([
         axios.get(`${API_URL}/calls/stats`, {
           headers: { 'Authorization': `Bearer ${token}` }
@@ -37,17 +49,23 @@ const Dashboard = () => {
         })
       ]);
 
-      if (statsRes.data.success) {
+      // Only update state if data has changed to prevent unnecessary re-renders
+      if (statsRes.data.success && JSON.stringify(statsRes.data.data) !== JSON.stringify(stats)) {
         setStats(statsRes.data.data);
       }
-      if (activeRes.data.success) {
+      if (activeRes.data.success && JSON.stringify(activeRes.data.data) !== JSON.stringify(activeCalls)) {
         setActiveCalls(activeRes.data.data);
       }
-      if (recentRes.data.success) {
+      if (recentRes.data.success && JSON.stringify(recentRes.data.data) !== JSON.stringify(recentCalls)) {
         setRecentCalls(recentRes.data.data);
       }
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
+      // Don't clear data on error, keep existing data
+      // Only show error if it's a critical error (not 401/403)
+      if (err.response?.status !== 401 && err.response?.status !== 403) {
+        console.warn('Dashboard data fetch failed, keeping existing data');
+      }
     } finally {
       setLoading(false);
     }

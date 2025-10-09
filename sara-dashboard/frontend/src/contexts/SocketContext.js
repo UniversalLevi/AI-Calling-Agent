@@ -81,6 +81,17 @@ export const SocketProvider = ({ children }) => {
         );
       });
 
+      newSocket.on('transcript-updated', (data) => {
+        console.log('📝 Transcript updated:', data);
+        setActiveCalls(prev => 
+          prev.map(call => 
+            call.callId === data.callId 
+              ? { ...call, transcript: (call.transcript || '') + `${data.speaker}: ${data.text}\n` }
+              : call
+          )
+        );
+      });
+
       newSocket.on('call-interrupted', (callData) => {
         console.log('🛑 Call interrupted:', callData);
         
