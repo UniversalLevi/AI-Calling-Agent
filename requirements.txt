@@ -26,3 +26,7 @@ wave==0.0.2
 # WebSocket client for dashboard integration
 python-socketio==5.10.0
 
+# Hinglish transliteration and text processing (Master Branch TTS System)
+indic-transliteration==2.3.75
+regex==2025.9.18
+

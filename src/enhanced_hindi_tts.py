@@ -182,9 +182,9 @@ class EnhancedHindiTTS:
             import openai
             
             api_key = os.getenv('OPENAI_API_KEY')
-            model = os.getenv('OPENAI_TTS_MODEL', 'tts-1-hd')  # Use HD model for better quality
+            model = os.getenv('OPENAI_TTS_MODEL', 'tts-1')  # Use standard model for natural speech
             
-            # Use female voice for Sara with optimized settings for more natural speech
+            # Use female voice for Sara with master branch settings
             voice = os.getenv('OPENAI_TTS_VOICE', 'nova')  # Nova is a female voice
             
             client = openai.OpenAI(api_key=api_key)
@@ -198,12 +198,12 @@ class EnhancedHindiTTS:
             # Optimize text for better Hinglish pronunciation
             optimized_text = self._optimize_text_for_tts(text)
             
-            # Generate speech with optimized settings for more natural, human-like voice
+            # Generate speech with master branch settings for natural speech
             response = client.audio.speech.create(
                 model=model,
                 voice=voice,
                 input=optimized_text,
-                speed=0.9,  # Slightly slower for more natural speech
+                speed=1.0,  # Normal speed for natural speech (master branch setting)
                 response_format="mp3"
             )
             
@@ -219,8 +219,30 @@ class EnhancedHindiTTS:
             return None
     
     def _optimize_text_for_tts(self, text: str) -> str:
-        """Optimize text for better TTS pronunciation, especially for Hindi/Hinglish"""
-        
+        """Optimize text for better TTS pronunciation using advanced Hinglish transliteration"""
+        try:
+            # Import the advanced Hinglish transliterator
+            from .hinglish_transliterator import optimize_text_for_sara_tts, detect_language
+            
+            # Detect language to determine optimization strategy
+            detected_language = detect_language(text)
+            
+            # Apply Sara-specific TTS optimization
+            optimized_text = optimize_text_for_sara_tts(text, detected_language)
+            
+            print(f"🔍 Text optimization: '{text[:50]}...' -> '{optimized_text[:50]}...'")
+            return optimized_text
+            
+        except ImportError as e:
+            print(f"⚠️ Hinglish transliterator not available, using fallback: {e}")
+            # Fallback to simple replacements if advanced module not available
+            return self._fallback_text_optimization(text)
+        except Exception as e:
+            print(f"⚠️ Text optimization error, using fallback: {e}")
+            return self._fallback_text_optimization(text)
+    
+    def _fallback_text_optimization(self, text: str) -> str:
+        """Fallback text optimization when advanced transliterator is not available"""
         # Add natural pauses and speech patterns for more human-like delivery
         text = self._add_natural_pauses(text)
         
