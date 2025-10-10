@@ -7,7 +7,7 @@ import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const Dashboard = () => {
   const { user, token } = useAuth();
@@ -33,7 +33,7 @@ const Dashboard = () => {
     
     try {
       // Only show loading on initial load, not on refreshes
-      if (stats.totalCalls === 0 && activeCalls.length === 0 && recentCalls.length === 0) {
+      if (!stats || (stats.totalCalls === 0 && activeCalls.length === 0 && recentCalls.length === 0)) {
         setLoading(true);
       }
       

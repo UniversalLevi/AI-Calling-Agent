@@ -7,6 +7,10 @@ import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
+// Set axios base URL
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+axios.defaults.baseURL = API_URL;
+
 // Create context
 const AuthContext = createContext();
 
@@ -113,6 +117,7 @@ export const AuthProvider = ({ children }) => {
           dispatch({ type: AUTH_ACTIONS.LOGOUT });
         }
       } else {
+        // No token, set loading to false without error
         dispatch({ type: AUTH_ACTIONS.LOAD_USER_FAILURE });
       }
     };
@@ -125,7 +130,7 @@ export const AuthProvider = ({ children }) => {
     try {
       dispatch({ type: AUTH_ACTIONS.LOGIN_START });
       
-      const response = await axios.post('/api/users/login', credentials);
+      const response = await axios.post('/users/login', credentials);
       const { user, token } = response.data.data;
       
       dispatch({
@@ -159,7 +164,7 @@ export const AuthProvider = ({ children }) => {
     try {
       dispatch({ type: AUTH_ACTIONS.LOAD_USER_START });
       
-      const response = await axios.get('/api/users/profile');
+      const response = await axios.get('/users/profile');
       const user = response.data.data;
       
       dispatch({
@@ -171,15 +176,17 @@ export const AuthProvider = ({ children }) => {
       
     } catch (error) {
       console.error('Load user error:', error);
+      
+      // If token is invalid, logout silently
+      if (error.response?.status === 401) {
+        dispatch({ type: AUTH_ACTIONS.LOGOUT });
+        return;
+      }
+      
       dispatch({
         type: AUTH_ACTIONS.LOAD_USER_FAILURE,
         payload: 'Failed to load user'
       });
-      
-      // If token is invalid, logout
-      if (error.response?.status === 401) {
-        logout();
-      }
       
       throw error; // Re-throw for caller to handle
     }
@@ -188,7 +195,7 @@ export const AuthProvider = ({ children }) => {
   // Update profile function
   const updateProfile = async (profileData) => {
     try {
-      const response = await axios.put('/api/users/profile', profileData);
+      const response = await axios.put('/users/profile', profileData);
       const user = response.data.data;
       
       dispatch({
@@ -209,7 +216,7 @@ export const AuthProvider = ({ children }) => {
   // Change password function
   const changePassword = async (passwordData) => {
     try {
-      await axios.put('/api/users/change-password', passwordData);
+      await axios.put('/users/change-password', passwordData);
       toast.success('Password changed successfully');
       return { success: true };
       
