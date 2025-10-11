@@ -26,15 +26,15 @@ router.post('/', createCallLog);
 router.patch('/:id', updateCallLog);
 router.patch('/:id/transcript', updateCallTranscript);
 
-// Temporary public routes for testing (remove in production)
+// Apply authentication to dashboard routes
+router.use(authMiddleware);
+
+// Protected dashboard routes
 router.get('/stats', getCallStats);
 router.get('/analytics', getCallAnalytics);
 router.get('/active', getActiveCalls);
 router.get('/', getCallLogs);
 router.post('/cleanup', cleanupStuckCalls);
-
-// Apply authentication to remaining routes
-router.use(authMiddleware);
 
 // @route   GET /api/calls/:id
 // @desc    Get single call log

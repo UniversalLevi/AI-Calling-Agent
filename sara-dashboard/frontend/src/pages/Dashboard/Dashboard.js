@@ -16,6 +16,7 @@ const Dashboard = () => {
   const [activeCalls, setActiveCalls] = useState([]);
   const [recentCalls, setRecentCalls] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     if (token && user) {
@@ -49,6 +50,9 @@ const Dashboard = () => {
         })
       ]);
 
+      // Reset retry count on successful fetch
+      setRetryCount(0);
+      
       // Only update state if data has changed to prevent unnecessary re-renders
       if (statsRes.data.success && JSON.stringify(statsRes.data.data) !== JSON.stringify(stats)) {
         setStats(statsRes.data.data);
@@ -61,7 +65,35 @@ const Dashboard = () => {
       }
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
-      // Don't clear data on error, keep existing data
+      
+      // Handle specific error types
+      if (err.response?.status === 401) {
+        // Token expired or invalid, logout user
+        console.log('Token expired, logging out...');
+        window.location.href = '/login';
+        return;
+      }
+      
+      if (err.response?.status === 403) {
+        // Insufficient permissions
+        console.warn('Insufficient permissions for dashboard data');
+        return;
+      }
+      
+      // Retry mechanism for network errors
+      if (retryCount < 3 && (err.code === 'NETWORK_ERROR' || !err.response)) {
+        console.log(`Retrying dashboard data fetch (attempt ${retryCount + 1}/3)...`);
+        setRetryCount(prev => prev + 1);
+        setTimeout(() => fetchDashboardData(), 2000 * (retryCount + 1)); // Exponential backoff
+        return;
+      }
+      
+      // Network or server errors - keep existing data
+      if (err.code === 'NETWORK_ERROR' || err.response?.status >= 500) {
+        console.warn('Network/server error, keeping existing data');
+        return;
+      }
+      
       // Only show error if it's a critical error (not 401/403)
       if (err.response?.status !== 401 && err.response?.status !== 403) {
         console.warn('Dashboard data fetch failed, keeping existing data');
