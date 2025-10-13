@@ -674,38 +674,26 @@ class EnhancedHindiTTS:
         try:
             import subprocess
             
-            # Create temporary files
-            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as mp3_file:
-                mp3_file.write(mp3_bytes)
-                mp3_path = mp3_file.name
+            # Use pipe approach for better reliability
+            process = subprocess.Popen([
+                'ffmpeg',
+                '-loglevel', 'error',
+                '-i', 'pipe:0',
+                '-ar', '8000',  # 8kHz sample rate for Twilio
+                '-ac', '1',     # Mono
+                '-f', 'wav',
+                'pipe:1'
+            ], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as wav_file:
-                wav_path = wav_file.name
+            stdout, stderr = process.communicate(input=mp3_bytes)
             
-            try:
-                # Convert MP3 to WAV using ffmpeg
-                process = subprocess.run([
-                    'ffmpeg',
-                    '-i', mp3_path,
-                    '-ar', '8000',  # 8kHz sample rate for Twilio
-                    '-ac', '1',     # Mono
-                    '-f', 'wav',
-                    wav_path
-                ], capture_output=True, check=True)
-                
-                # Read the converted WAV file
-                with open(wav_path, 'rb') as f:
-                    wav_bytes = f.read()
-                
-                return wav_bytes
-                
-            finally:
-                # Clean up temporary files
-                try:
-                    os.unlink(mp3_path)
-                    os.unlink(wav_path)
-                except:
-                    pass
+            if process.returncode != 0:
+                print(f"❌ FFmpeg conversion failed with return code {process.returncode}")
+                print(f"❌ FFmpeg stderr: {stderr.decode() if stderr else 'No stderr'}")
+                return self._generate_silence_wav()
+            
+            print(f"✅ MP3 to WAV conversion successful: {len(stdout)} bytes")
+            return stdout
                     
         except Exception as e:
             print(f"❌ MP3 to WAV conversion error: {e}")
