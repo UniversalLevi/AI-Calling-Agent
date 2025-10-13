@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Optional, Callable
 
 try:
-    from .enhanced_hindi_tts import speak_mixed_enhanced
+    from .enhanced_hindi_tts import speak_mixed_enhanced_bytes
 except ImportError:
-    from enhanced_hindi_tts import speak_mixed_enhanced
+    from enhanced_hindi_tts import speak_mixed_enhanced_bytes
 
 
 def create_tts_adapter() -> Callable[[str], bytes]:
@@ -37,27 +37,11 @@ def create_tts_adapter() -> Callable[[str], bytes]:
             WAV bytes ready for Media Streams
         """
         try:
-            # Generate audio file using our existing TTS system
-            audio_file = speak_mixed_enhanced(text)
+            # Generate WAV bytes directly using the enhanced TTS system
+            wav_bytes = speak_mixed_enhanced_bytes(text)
             
-            if not audio_file:
-                raise RuntimeError("TTS failed to generate audio")
-            
-            # Read the generated audio file
-            audio_path = Path("audio_files") / audio_file
-            
-            if not audio_path.exists():
-                raise RuntimeError(f"Generated audio file not found: {audio_path}")
-            
-            # Read the audio file as bytes
-            with open(audio_path, 'rb') as f:
-                audio_bytes = f.read()
-            
-            # Convert MP3 to WAV if needed
-            if audio_file.endswith('.mp3'):
-                wav_bytes = _convert_mp3_to_wav(audio_bytes)
-            else:
-                wav_bytes = audio_bytes
+            if not isinstance(wav_bytes, (bytes, bytearray)):
+                raise RuntimeError("TTS provider must return WAV bytes")
             
             return wav_bytes
             

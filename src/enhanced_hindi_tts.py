@@ -582,6 +582,194 @@ class EnhancedHindiTTS:
         else:
             # For English, also use enhanced TTS
             return self.speak_enhanced_hindi(text)
+    
+    def speak_enhanced_hindi_bytes(self, text: str) -> bytes:
+        """
+        Generate speech and return WAV bytes for Media Streams compatibility.
+        
+        Args:
+            text: Text to convert to speech
+            
+        Returns:
+            WAV bytes ready for Media Streams
+        """
+        try:
+            # Generate audio file using existing logic
+            audio_filename = self.speak_enhanced_hindi(text)
+            
+            if not audio_filename or audio_filename == text:
+                # TTS failed, return silence
+                return self._generate_silence_wav()
+            
+            # Convert audio file to WAV bytes
+            return self._audio_file_to_wav_bytes(audio_filename)
+            
+        except Exception as e:
+            print(f"❌ Enhanced Hindi TTS bytes error: {e}")
+            return self._generate_silence_wav()
+    
+    def speak_mixed_language_bytes(self, text: str) -> bytes:
+        """
+        Generate speech for mixed language text and return WAV bytes.
+        
+        Args:
+            text: Text to convert to speech
+            
+        Returns:
+            WAV bytes ready for Media Streams
+        """
+        try:
+            # Generate audio file using existing logic
+            audio_filename = self.speak_mixed_language(text)
+            
+            if not audio_filename or audio_filename == text:
+                # TTS failed, return silence
+                return self._generate_silence_wav()
+            
+            # Convert audio file to WAV bytes
+            return self._audio_file_to_wav_bytes(audio_filename)
+            
+        except Exception as e:
+            print(f"❌ Mixed language TTS bytes error: {e}")
+            return self._generate_silence_wav()
+    
+    def _audio_file_to_wav_bytes(self, audio_filename: str) -> bytes:
+        """
+        Convert audio file to WAV bytes for Media Streams.
+        
+        Args:
+            audio_filename: Name of the audio file
+            
+        Returns:
+            WAV bytes
+        """
+        try:
+            audio_path = Path("audio_files") / audio_filename
+            
+            if not audio_path.exists():
+                print(f"❌ Audio file not found: {audio_path}")
+                return self._generate_silence_wav()
+            
+            # Read the audio file
+            with open(audio_path, 'rb') as f:
+                audio_bytes = f.read()
+            
+            # Convert MP3 to WAV if needed
+            if audio_filename.endswith('.mp3'):
+                wav_bytes = self._convert_mp3_to_wav(audio_bytes)
+            elif audio_filename.endswith('.wav'):
+                wav_bytes = audio_bytes
+            else:
+                print(f"❌ Unsupported audio format: {audio_filename}")
+                return self._generate_silence_wav()
+            
+            return wav_bytes
+            
+        except Exception as e:
+            print(f"❌ Audio file to WAV conversion error: {e}")
+            return self._generate_silence_wav()
+    
+    def _convert_mp3_to_wav(self, mp3_bytes: bytes) -> bytes:
+        """Convert MP3 bytes to WAV bytes using ffmpeg"""
+        try:
+            import subprocess
+            
+            # Create temporary files
+            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as mp3_file:
+                mp3_file.write(mp3_bytes)
+                mp3_path = mp3_file.name
+            
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as wav_file:
+                wav_path = wav_file.name
+            
+            try:
+                # Convert MP3 to WAV using ffmpeg
+                process = subprocess.run([
+                    'ffmpeg',
+                    '-i', mp3_path,
+                    '-ar', '8000',  # 8kHz sample rate for Twilio
+                    '-ac', '1',     # Mono
+                    '-f', 'wav',
+                    wav_path
+                ], capture_output=True, check=True)
+                
+                # Read the converted WAV file
+                with open(wav_path, 'rb') as f:
+                    wav_bytes = f.read()
+                
+                return wav_bytes
+                
+            finally:
+                # Clean up temporary files
+                try:
+                    os.unlink(mp3_path)
+                    os.unlink(wav_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            print(f"❌ MP3 to WAV conversion error: {e}")
+            return self._generate_silence_wav()
+    
+    def _generate_silence_wav(self, duration_ms: int = 100) -> bytes:
+        """Generate a short silence WAV file"""
+        try:
+            import subprocess
+            
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as wav_file:
+                wav_path = wav_file.name
+            
+            try:
+                # Generate silence using ffmpeg
+                process = subprocess.run([
+                    'ffmpeg',
+                    '-f', 'lavfi',
+                    '-i', f'anullsrc=duration={duration_ms}ms',
+                    '-ar', '8000',
+                    '-ac', '1',
+                    '-f', 'wav',
+                    wav_path
+                ], capture_output=True, check=True)
+                
+                with open(wav_path, 'rb') as f:
+                    wav_bytes = f.read()
+                
+                return wav_bytes
+                
+            finally:
+                try:
+                    os.unlink(wav_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            print(f"❌ Silence generation error: {e}")
+            # Return minimal WAV header as last resort
+            return self._minimal_wav_header()
+    
+    def _minimal_wav_header(self) -> bytes:
+        """Generate minimal WAV header for silence"""
+        # Minimal WAV header for 8kHz mono 16-bit PCM
+        return bytes([
+            # RIFF header
+            0x52, 0x49, 0x46, 0x46,  # "RIFF"
+            0x24, 0x00, 0x00, 0x00,  # File size - 8
+            0x57, 0x41, 0x56, 0x45,  # "WAVE"
+            
+            # fmt chunk
+            0x66, 0x6D, 0x74, 0x20,  # "fmt "
+            0x10, 0x00, 0x00, 0x00,  # Chunk size
+            0x01, 0x00,              # Audio format (PCM)
+            0x01, 0x00,              # Number of channels (mono)
+            0x40, 0x1F, 0x00, 0x00,  # Sample rate (8000)
+            0x80, 0x3E, 0x00, 0x00,  # Byte rate
+            0x02, 0x00,              # Block align
+            0x10, 0x00,              # Bits per sample
+            
+            # data chunk
+            0x64, 0x61, 0x74, 0x61,  # "data"
+            0x00, 0x00, 0x00, 0x00,  # Data size (0 for silence)
+        ])
 
 
 # Global instance
@@ -596,4 +784,14 @@ def speak_enhanced_hindi(text: str) -> str:
 def speak_mixed_enhanced(text: str) -> str:
     """Main function to generate enhanced mixed language speech"""
     return enhanced_hindi_tts.speak_mixed_language(text)
+
+
+def speak_enhanced_hindi_bytes(text: str) -> bytes:
+    """Main function to generate enhanced Hindi speech as WAV bytes"""
+    return enhanced_hindi_tts.speak_enhanced_hindi_bytes(text)
+
+
+def speak_mixed_enhanced_bytes(text: str) -> bytes:
+    """Main function to generate enhanced mixed language speech as WAV bytes"""
+    return enhanced_hindi_tts.speak_mixed_language_bytes(text)
 
