@@ -129,8 +129,8 @@ const Dashboard = () => {
   return (
     <div className="fade-in">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="mt-2 text-sm text-gray-600">
+        <h1 className="text-3xl font-bold text-white">Dashboard</h1>
+        <p className="mt-2 text-sm text-gray-300">
           Welcome back, {user?.firstName} {user?.lastName}!
         </p>
       </div>
@@ -146,10 +146,10 @@ const Dashboard = () => {
             </div>
             <div className="ml-5 w-0 flex-1">
               <dl>
-                <dt className="text-sm font-medium text-gray-500 truncate">
+                <dt className="text-sm font-medium text-gray-400 truncate">
                   Total Calls
                 </dt>
-                <dd className="text-2xl font-semibold text-gray-900">
+                <dd className="text-2xl font-semibold text-white">
                   {stats?.totalCalls || 0}
                 </dd>
               </dl>
@@ -166,10 +166,10 @@ const Dashboard = () => {
             </div>
             <div className="ml-5 w-0 flex-1">
               <dl>
-                <dt className="text-sm font-medium text-gray-500 truncate">
+                <dt className="text-sm font-medium text-gray-400 truncate">
                   Successful
                 </dt>
-                <dd className="text-2xl font-semibold text-gray-900">
+                <dd className="text-2xl font-semibold text-white">
                   {stats?.successfulCalls || 0}
                 </dd>
               </dl>
@@ -186,10 +186,10 @@ const Dashboard = () => {
             </div>
             <div className="ml-5 w-0 flex-1">
               <dl>
-                <dt className="text-sm font-medium text-gray-500 truncate">
+                <dt className="text-sm font-medium text-gray-400 truncate">
                   Avg Duration
                 </dt>
-                <dd className="text-2xl font-semibold text-gray-900">
+                <dd className="text-2xl font-semibold text-white">
                   {formatDuration(Math.floor(stats?.averageDuration || 0))}
                 </dd>
               </dl>
@@ -206,10 +206,10 @@ const Dashboard = () => {
             </div>
             <div className="ml-5 w-0 flex-1">
               <dl>
-                <dt className="text-sm font-medium text-gray-500 truncate">
+                <dt className="text-sm font-medium text-gray-400 truncate">
                   Active Calls
                 </dt>
-                <dd className="text-2xl font-semibold text-gray-900">
+                <dd className="text-2xl font-semibold text-white">
                   {activeCalls.length}
                 </dd>
               </dl>
@@ -222,25 +222,25 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Recent Calls */}
         <div className="card">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          <h2 className="text-lg font-semibold text-white mb-4">
             Recent Calls
           </h2>
           {recentCalls.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">No recent calls</p>
+            <p className="text-gray-400 text-center py-8">No recent calls</p>
           ) : (
             <div className="space-y-4">
               {recentCalls.map((call) => (
-                <div key={call._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div key={call._id} className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium text-white">
                       {call.caller} → {call.receiver}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-gray-400">
                       {formatDate(call.startTime)}
                     </p>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <span className="text-sm text-gray-600">
+                    <span className="text-sm text-gray-300">
                       {formatDuration(call.duration)}
                     </span>
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${
@@ -259,33 +259,33 @@ const Dashboard = () => {
 
         {/* System Status */}
         <div className="card">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          <h2 className="text-lg font-semibold text-white mb-4">
             System Status
           </h2>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Backend API</span>
+              <span className="text-sm text-gray-300">Backend API</span>
               <span className="flex items-center text-sm font-medium text-green-600">
                 <span className="h-2 w-2 bg-green-500 rounded-full mr-2"></span>
                 Connected
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Real-time Updates</span>
+              <span className="text-sm text-gray-300">Real-time Updates</span>
               <span className={`flex items-center text-sm font-medium ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
                 <span className={`h-2 w-2 ${isConnected ? 'bg-green-500' : 'bg-red-500'} rounded-full mr-2`}></span>
                 {isConnected ? 'Active' : 'Inactive'}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">User Role</span>
-              <span className="text-sm font-medium text-gray-900 capitalize">
+              <span className="text-sm text-gray-300">User Role</span>
+              <span className="text-sm font-medium text-white capitalize">
                 {user?.role}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Success Rate</span>
-              <span className="text-sm font-medium text-gray-900">
+              <span className="text-sm text-gray-300">Success Rate</span>
+              <span className="text-sm font-medium text-white">
                 {stats?.successRate || 0}%
               </span>
             </div>
@@ -295,7 +295,7 @@ const Dashboard = () => {
 
       {/* Quick Actions */}
       <div className="card mt-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        <h2 className="text-lg font-semibold text-white mb-4">
           Quick Actions
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

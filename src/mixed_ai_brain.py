@@ -51,9 +51,18 @@ class MixedOpenAIProvider(MixedAIProvider):
         # Get appropriate system prompt
         system_prompt = get_language_prompt(language)
         
+        # Add language instruction based on detected language
+        if language in ['hi', 'mixed']:
+            language_instruction = "\n\nIMPORTANT: User is speaking Hindi/Hinglish. Respond in Romanized Hinglish (like: 'Bilkul! Aapko kis sheher mein hotel chahiye?'). Do NOT respond in English."
+        else:
+            language_instruction = "\n\nRespond in English."
+        
+        # Append language instruction to system prompt
+        enhanced_prompt = system_prompt + language_instruction
+        
         # Add system prompt if this is the first message
         if not self.history:
-            self.history.append({"role": "system", "content": system_prompt})
+            self.history.append({"role": "system", "content": enhanced_prompt})
         
         # Add user message
         self.history.append({"role": "user", "content": user_text})
@@ -104,12 +113,21 @@ class MixedGeminiProvider(MixedAIProvider):
         # Get appropriate system prompt
         system_prompt = get_language_prompt(language)
         
+        # Add language instruction based on detected language
+        if language in ['hi', 'mixed']:
+            language_instruction = "\n\nIMPORTANT: User is speaking Hindi/Hinglish. Respond in Romanized Hinglish (like: 'Bilkul! Aapko kis sheher mein hotel chahiye?'). Do NOT respond in English."
+        else:
+            language_instruction = "\n\nRespond in English."
+        
+        # Append language instruction to system prompt
+        enhanced_prompt = system_prompt + language_instruction
+        
         try:
             # Create conversation context
             if not self.history:
                 # First message - include system prompt
                 response = self.model.generate_content(
-                    f"{system_prompt}\n\nUser: {user_text}"
+                    f"{enhanced_prompt}\n\nUser: {user_text}"
                 )
             else:
                 # Continue conversation

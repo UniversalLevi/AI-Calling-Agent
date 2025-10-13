@@ -49,7 +49,13 @@ def detect_language(text: str) -> str:
         'namaste', 'kaise', 'ho', 'hai', 'haan', 'nahi', 'kripya', 'dhanyavad',
         'madad', 'samay', 'tarikh', 'booking', 'pata', 'number', 'bhai', 'didi', 'ji',
         'aap', 'hum', 'mera', 'meri', 'kya', 'kyu', 'kyon', 'kab', 'kahan', 'kidhar',
-        'chahiye', 'chahiyeh', 'karna', 'hoga', 'krna', 'krunga', 'krungi'
+        'chahiye', 'chahiyeh', 'karna', 'hoga', 'krna', 'krunga', 'krungi',
+        # Add more common words
+        'mere', 'mujhe', 'tumhe', 'aapko', 'hamein', 'unhein',
+        'dekh', 'dekho', 'bolo', 'batao', 'suno', 'samjho',
+        'theek', 'bilkul', 'zaroor', 'shayad', 'kabhi',
+        'hotel', 'restaurant', 'room', 'book', 'karo', 'karna',
+        'mein', 'me', 'ko', 'se', 'par', 'ke', 'ki', 'ka'
     ]
     for kw in hinglish_keywords:
         if kw in lower_text:
@@ -59,7 +65,7 @@ def detect_language(text: str) -> str:
         return 'hi'
     elif english_percentage >= 70 and hinglish_hits == 0:
         return 'en'
-    elif hinglish_hits >= 2 and english_percentage >= 40 and hindi_percentage < 10:
+    elif hinglish_hits >= 1 and english_percentage >= 40 and hindi_percentage < 10:
         return 'mixed'
     elif english_percentage >= 50 and hindi_percentage < 10 and hinglish_hits <= 1:
         return 'en'
@@ -77,7 +83,15 @@ def get_language_prompt(language: str) -> str:
         System prompt text
     """
     prompts = {
-        'hi': """आप सारा हैं, एक दोस्ताना और मददगार महिला AI असिस्टेंट। आप रेस्टोरेंट बुकिंग, होटल रिजर्वेशन और सामान्य प्रश्नों में मदद कर सकती हैं। गर्मजोशी से और प्राकृतिक तरीके से बात करें। हिंदी में जवाब दें और अपने आप को 'मैं' कहें। अगर कोई अश्लील या अनुचित बात करे तो विनम्रता से मना करें और सहायता की पेशकश करें।""",
+        'hi': """You are Sara, a friendly female AI assistant.
+
+CRITICAL: Respond in Romanized Hinglish (Hindi words in English script).
+Examples:
+- "Namaste! Main Sara hun, aapki madad kar sakti hun"
+- "Aapko kis sheher mein hotel chahiye?"
+- "Theek hai, main check karti hun"
+
+Be warm, helpful, and conversational. Ask one question at a time.""",
         
         'en': """You are Sara, a friendly and helpful female AI assistant. You can help with:
 - Restaurant bookings and recommendations
@@ -87,13 +101,15 @@ def get_language_prompt(language: str) -> str:
 
 Be warm, friendly, and conversational. Speak naturally as a helpful female assistant. If someone uses inappropriate language or makes inappropriate requests, politely decline and offer to help with appropriate topics instead. Always maintain a professional and respectful tone.""",
         
-        'mixed': """You are Sara, a friendly and helpful female AI assistant. You can help with:
-- Restaurant bookings and recommendations
-- Hotel reservations and travel planning
-- General questions and conversations
-- Booking assistance and guidance
+        'mixed': """You are Sara, a friendly female AI assistant.
 
-Be warm, friendly, and conversational. Respond in the same language as the user (Hindi or English). Speak naturally as a helpful female assistant. If someone uses inappropriate language or makes inappropriate requests, politely decline and offer to help with appropriate topics instead. Always maintain a professional and respectful tone."""
+CRITICAL: Respond in Romanized Hinglish (Hindi words in English script).
+Examples:
+- "Bilkul! Main aapki madad kar sakti hun"
+- "Aapko kis sheher mein hotel chahiye?"
+- "Theek hai, main check karti hun"
+
+Be warm, helpful, and conversational. Ask one question at a time."""
     }
     
     return prompts.get(language, prompts['en'])
@@ -155,7 +171,7 @@ def get_appropriate_response(language: str) -> str:
         Appropriate response text
     """
     responses = {
-        'hi': "मैं आपकी मदद करने के लिए यहाँ हूँ, लेकिन कृपया उचित भाषा का प्रयोग करें। मैं आपके साथ सम्मानजनक तरीके से बात करना चाहती हूँ। क्या मैं आपकी किसी अन्य तरीके से मदद कर सकती हूँ?",
+        'hi': "Main aapki madad karne ke liye yahan hun, lekin kripya uchit bhasha ka prayog karein. Main aapke saath sammanjanak tareeke se baat karna chahti hun. Kya main aapki kisi aur tareeke se madad kar sakti hun?",
         
         'en': "I'm here to help you, but please use appropriate language. I'd like to have a respectful conversation with you. Is there something else I can help you with?",
         
@@ -219,9 +235,9 @@ def get_greeting(language: str) -> str:
         Greeting text
     """
     greetings = {
-        'hi': "नमस्ते! मैं आपका AI असिस्टेंट हूं। आज मैं आपकी कैसे मदद कर सकता हूं?",
-        'en': "Hello! I'm your AI assistant. How can I help you today?",
-        'mixed': "Hello! नमस्ते! I'm your AI assistant. How can I help you today?"
+        'hi': "Namaste! Main Sara hun, aapki madad kar sakti hun. Aaj main aapki kaise help kar sakti hun?",
+        'en': "Hello! I'm Sara, your AI assistant. How can I help you today?",
+        'mixed': "Hello! Namaste! Main Sara hun, aapki madad kar sakti hun. How can I help you today?"
     }
     
     return greetings.get(language, greetings['en'])
@@ -237,9 +253,9 @@ def get_fallback_message(language: str) -> str:
         Fallback message text
     """
     messages = {
-        'hi': "मुझे समझ नहीं आया। कृपया दोबारा कहें।",
+        'hi': "Mujhe samajh nahi aaya. Kripya dobara kahiye.",
         'en': "I didn't catch that. Please try again.",
-        'mixed': "I didn't catch that. मुझे समझ नहीं आया। Please try again."
+        'mixed': "I didn't catch that. Mujhe samajh nahi aaya. Please try again."
     }
     
     return messages.get(language, messages['en'])

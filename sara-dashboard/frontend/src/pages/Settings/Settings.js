@@ -11,8 +11,8 @@ const Settings = () => {
   return (
     <div className="fade-in">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-        <p className="mt-2 text-sm text-gray-600">
+        <h1 className="text-3xl font-bold text-white">Settings</h1>
+        <p className="mt-2 text-sm text-gray-300">
           Manage system configuration and preferences
         </p>
       </div>
@@ -21,12 +21,12 @@ const Settings = () => {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* General Settings */}
         <div className="card">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
+          <h2 className="text-xl font-semibold text-white mb-4">
             General Settings
           </h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 System Language
               </label>
               <select className="input-field">
@@ -36,7 +36,7 @@ const Settings = () => {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Voice Type
               </label>
               <select className="input-field">
@@ -49,12 +49,12 @@ const Settings = () => {
 
         {/* Call Settings */}
         <div className="card">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
+          <h2 className="text-xl font-semibold text-white mb-4">
             Call Settings
           </h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Max Concurrent Calls
               </label>
               <input
@@ -66,7 +66,7 @@ const Settings = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Call Timeout (seconds)
               </label>
               <input
@@ -82,12 +82,12 @@ const Settings = () => {
 
         {/* User Profile */}
         <div className="card">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
+          <h2 className="text-xl font-semibold text-white mb-4">
             User Profile
           </h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Username
               </label>
               <input
@@ -98,7 +98,7 @@ const Settings = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Email
               </label>
               <input
@@ -109,7 +109,7 @@ const Settings = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Role
               </label>
               <input
@@ -124,12 +124,12 @@ const Settings = () => {
 
         {/* Notification Settings */}
         <div className="card">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
+          <h2 className="text-xl font-semibold text-white mb-4">
             Notifications
           </h2>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700">
+              <label className="text-sm font-medium text-gray-300">
                 Email Notifications
               </label>
               <input
@@ -139,7 +139,7 @@ const Settings = () => {
               />
             </div>
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700">
+              <label className="text-sm font-medium text-gray-300">
                 Dashboard Notifications
               </label>
               <input
@@ -149,7 +149,7 @@ const Settings = () => {
               />
             </div>
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700">
+              <label className="text-sm font-medium text-gray-300">
                 Call Alerts
               </label>
               <input

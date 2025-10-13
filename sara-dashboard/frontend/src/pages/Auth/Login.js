@@ -37,7 +37,7 @@ const Login = () => {
             Sign in to access the admin panel
           </p>
         </div>
-        <form className="mt-8 space-y-6 bg-white p-8 rounded-lg shadow-xl" onSubmit={handleSubmit}>
+        <form className="mt-8 space-y-6 bg-gray-800 p-8 rounded-lg shadow-xl" onSubmit={handleSubmit}>
           <div className="rounded-md shadow-sm -space-y-px">
             <div>
               <label htmlFor="username" className="sr-only">
@@ -83,7 +83,7 @@ const Login = () => {
             </button>
           </div>
 
-          <div className="text-sm text-center text-gray-600">
+          <div className="text-sm text-center text-gray-300">
             <p>Default credentials:</p>
             <p className="font-mono">admin / admin123</p>
           </div>

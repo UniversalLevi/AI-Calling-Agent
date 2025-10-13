@@ -920,7 +920,26 @@ def create_voice_bot_server():
                 
                 print(f"🌐 Detected language: {detected_language} for: '{speech_result[:30]}...'")
                 
-                # Store language for this call
+                # Check for explicit language switch requests
+                speech_lower = speech_result.lower()
+                language_switch_keywords = {
+                    'hindi': ['hindi mein', 'hindi me', 'speak in hindi', 'hindi mein bolo', 'hindi me bolo'],
+                    'english': ['english mein', 'english me', 'speak in english', 'english mein bolo', 'english me bolo'],
+                    'hinglish': ['hinglish mein', 'hinglish me', 'mix karo', 'hinglish mein bolo']
+                }
+                
+                for target_lang, keywords in language_switch_keywords.items():
+                    if any(keyword in speech_lower for keyword in keywords):
+                        print(f"🔄 Language switch detected: User wants to speak in {target_lang}")
+                        detected_language = target_lang if target_lang != 'hinglish' else 'mixed'
+                        # Force language switch for this and future responses
+                        if call_sid:
+                            if call_sid not in bot_app.call_language:
+                                bot_app.call_language[call_sid] = {}
+                            bot_app.call_language[call_sid]['language'] = detected_language
+                        break
+                
+                # Store language for this call with caching logic
                 if call_sid:
                     # Ensure proper dict structure for language storage
                     if call_sid not in bot_app.call_language:
@@ -930,7 +949,13 @@ def create_voice_bot_server():
                         old_lang = bot_app.call_language[call_sid]
                         bot_app.call_language[call_sid] = {'language': old_lang}
                     
-                    bot_app.call_language[call_sid]['language'] = detected_language
+                    # Cache language preference - use cached language if user hasn't switched
+                    cached_language = bot_app.call_language[call_sid].get('language', 'en')
+                    if detected_language != 'en':  # If user speaks Hindi/mixed, update cache
+                        bot_app.call_language[call_sid]['language'] = detected_language
+                    else:
+                        # Use cached language if user speaks English (might be temporary)
+                        detected_language = cached_language
                 
                 # Dynamic conversation context detection and response generation
                 # Analyze conversation context for dynamic behavior
@@ -1018,6 +1043,16 @@ def create_voice_bot_server():
                             user_lower = user_input.lower()
                             extracted_info = call_data.get('extracted_info', {})
                             
+                            # Extract service type (hotel, train, restaurant, etc.)
+                            if any(word in user_lower for word in ['hotel', 'होटल', 'accommodation', 'stay']):
+                                extracted_info['service_type'] = 'hotel'
+                            elif any(word in user_lower for word in ['train', 'ट्रेन', 'ticket', 'टिकट', 'railway']):
+                                extracted_info['service_type'] = 'train'
+                            elif any(word in user_lower for word in ['restaurant', 'रेस्टोरेंट', 'food', 'खाना', 'dining']):
+                                extracted_info['service_type'] = 'restaurant'
+                            elif any(word in user_lower for word in ['flight', 'हवाई जहाज', 'airplane', 'plane']):
+                                extracted_info['service_type'] = 'flight'
+                            
                             # Extract location/destination (English and Hindi)
                             locations = {
                                 'jaipur': 'Jaipur', 'जयपुर': 'Jaipur',
@@ -1029,15 +1064,50 @@ def create_voice_bot_server():
                                 'hyderabad': 'Hyderabad', 'हैदराबाद': 'Hyderabad',
                                 'pune': 'Pune', 'पुणे': 'Pune',
                                 'ahmedabad': 'Ahmedabad', 'अहमदाबाद': 'Ahmedabad',
-                                'goa': 'Goa', 'गोवा': 'Goa'
+                                'goa': 'Goa', 'गोवा': 'Goa',
+                                'udaipur': 'Udaipur', 'उदयपुर': 'Udaipur',
+                                'kanpur': 'Kanpur', 'कानपुर': 'Kanpur',
+                                'lucknow': 'Lucknow', 'लखनऊ': 'Lucknow',
+                                'varanasi': 'Varanasi', 'वाराणसी': 'Varanasi'
                             }
                             for location_key, location_value in locations.items():
                                 if location_key in user_lower or location_key in user_input:
                                     extracted_info['destination'] = location_value
                                     break
                             
-                            # Extract budget information
+                            # Extract names (common patterns)
                             import re
+                            name_patterns = [
+                                r'मेरा नाम (\w+) है',
+                                r'मैं (\w+) हूं',
+                                r'my name is (\w+)',
+                                r'i am (\w+)',
+                                r'name (\w+)',
+                                r'(\w+) is my name'
+                            ]
+                            for pattern in name_patterns:
+                                match = re.search(pattern, user_lower)
+                                if match:
+                                    extracted_info['name'] = match.group(1).title()
+                                    break
+                            
+                            # Extract age
+                            age_patterns = [
+                                r'मेरी उम्र (\d+) है',
+                                r'मेरी age (\d+) है',
+                                r'मैं (\d+) साल का हूं',
+                                r'मैं (\d+) साल की हूं',
+                                r'my age is (\d+)',
+                                r'i am (\d+) years old',
+                                r'age (\d+)'
+                            ]
+                            for pattern in age_patterns:
+                                match = re.search(pattern, user_lower)
+                                if match:
+                                    extracted_info['age'] = int(match.group(1))
+                                    break
+                            
+                            # Extract budget information
                             budget_match = re.search(r'(\d+)\s*(?:rupees?|rs\.?|₹)', user_lower)
                             if budget_match:
                                 extracted_info['budget'] = int(budget_match.group(1))
@@ -1049,7 +1119,8 @@ def create_voice_bot_server():
                             # Extract duration
                             duration_patterns = [
                                 (r'(\d+)\s*(?:days?|nights?)', 'duration_days'),
-                                (r'(?:one|two|three|four|five)\s*(?:days?|nights?)', 'duration_text')
+                                (r'(?:one|two|three|four|five)\s*(?:days?|nights?)', 'duration_text'),
+                                (r'(\d+)\s*(?:week|weeks|हफ्ते)', 'duration_weeks')
                             ]
                             for pattern, key in duration_patterns:
                                 match = re.search(pattern, user_lower)
@@ -1064,11 +1135,31 @@ def create_voice_bot_server():
                                 extracted_info['checkin'] = 'tonight'
                             elif 'tomorrow' in user_lower or 'कल' in user_input:
                                 extracted_info['checkin'] = 'tomorrow'
+                            elif 'next week' in user_lower or 'अगले हफ्ते' in user_input:
+                                extracted_info['checkin'] = 'next week'
+                            
+                            # Extract specific dates
+                            date_patterns = [
+                                r'(\d+)\s*(?:tarikh|date|तारीख)',
+                                r'(\d+)(?:st|nd|rd|th)?\s*(?:january|february|march|april|may|june|july|august|september|october|november|december)',
+                                r'(\d+)(?:st|nd|rd|th)?\s*(?:जनवरी|फरवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|अक्टूबर|नवंबर|दिसंबर)'
+                            ]
+                            for pattern in date_patterns:
+                                match = re.search(pattern, user_lower)
+                                if match:
+                                    extracted_info['specific_date'] = match.group(0)
+                                    break
                             
                             # Extract number of people
-                            people_match = re.search(r'(\d+)\s*(?:people|person|व्यक्ति)', user_lower)
+                            people_match = re.search(r'(\d+)\s*(?:people|person|व्यक्ति|log)', user_lower)
                             if people_match:
                                 extracted_info['people'] = int(people_match.group(1))
+                            
+                            # Extract seat preferences
+                            if any(word in user_lower for word in ['side lower', 'साइड लोअर', 'lower berth', 'upper berth']):
+                                extracted_info['seat_preference'] = 'side lower'
+                            elif any(word in user_lower for word in ['sleeper', 'स्लीपर', 'ac', 'air conditioned']):
+                                extracted_info['seat_preference'] = 'sleeper'
                             
                             call_data['extracted_info'] = extracted_info
                             return extracted_info
@@ -1077,19 +1168,17 @@ def create_voice_bot_server():
                         current_info = extract_and_store_info(speech_result, bot_app.call_language[call_sid])
                         def get_memory_aware_prompt(stage, language, call_data):
                             # Enhanced language consistency - bot should match user's language
-                            if language == 'hi':
-                                base_prompt = "You are Sara, a helpful female AI assistant. Always respond in Hindi/Hinglish. Use Hindi words and phrases naturally. "
-                            elif language == 'mixed':
-                                base_prompt = "You are Sara, a helpful female AI assistant. Respond in Hinglish (mix of Hindi and English). Use Hindi words when natural, English for technical terms. "
+                            if language in ['hi', 'mixed']:
+                                base_prompt = "You are Sara, a helpful female AI assistant. CRITICAL: Respond in Romanized Hinglish (Hindi words in English script). Examples: 'Bilkul! Main aapki madad kar sakti hun', 'Aapko kis sheher mein hotel chahiye?'. Do NOT respond in English when user speaks Hindi/Hinglish. "
                             else:
-                                base_prompt = f"You are Sara, a helpful female AI assistant. Respond naturally in {language}. "
+                                base_prompt = "You are Sara, a helpful female AI assistant. Respond naturally in English. "
                             
                             # Get conversation history and extracted info
                             history = call_data.get('conversation_history', [])
                             extracted_info = call_data.get('extracted_info', {})
                             asked_questions = call_data.get('asked_questions', set())
                             
-                            # Build context from memory
+                            # Build comprehensive context from memory
                             context_parts = []
                             if extracted_info.get('destination'):
                                 context_parts.append(f"Destination: {extracted_info['destination']}")
@@ -1104,18 +1193,31 @@ def create_voice_bot_server():
                                 context_parts.append(f"Check-in: {extracted_info['checkin']}")
                             if extracted_info.get('people'):
                                 context_parts.append(f"People: {extracted_info['people']}")
+                            if extracted_info.get('name'):
+                                context_parts.append(f"Name: {extracted_info['name']}")
+                            if extracted_info.get('age'):
+                                context_parts.append(f"Age: {extracted_info['age']}")
+                            if extracted_info.get('service_type'):
+                                context_parts.append(f"Service: {extracted_info['service_type']}")
                             
+                            # Enhanced memory context with conversation flow awareness
                             memory_context = ""
                             if context_parts:
-                                memory_context = f"\n\nKnown information from conversation: {', '.join(context_parts)}"
-                                memory_context += "\nDo NOT ask for information you already know. Build upon what you know."
+                                memory_context = f"\n\nCONVERSATION CONTEXT: {', '.join(context_parts)}"
+                                memory_context += "\nIMPORTANT: Use this information to provide relevant responses. Don't ask for information you already know. Build upon what you know and be proactive."
+                            
+                            # Add conversation flow awareness
+                            if len(history) > 0:
+                                recent_topics = [h.get('topic', '') for h in history[-3:] if h.get('topic')]
+                                if recent_topics:
+                                    memory_context += f"\nRecent conversation topics: {', '.join(recent_topics)}"
                             
                             # Check if user is asking for options/suggestions
-                            user_wants_options = any(word in speech_result.lower() for word in ['बताओ', 'options', 'suggest', 'recommend', 'show', 'list'])
+                            user_wants_options = any(word in speech_result.lower() for word in ['बताओ', 'options', 'suggest', 'recommend', 'show', 'list', 'dekh', 'dekho'])
                             
                             # Special handling for providing options/lists
                             if user_wants_options and extracted_info:
-                                return base_prompt + f"The user wants you to provide specific options/suggestions based on their request. Give 2-3 relevant recommendations with details. Be complete in your response - don't cut off mid-sentence. You have all needed info: {', '.join(context_parts)}. Provide complete list with helpful details." + memory_context
+                                return base_prompt + f"The user wants specific options/suggestions. Provide 2-3 relevant recommendations with helpful details. Be complete and actionable. You have: {', '.join(context_parts)}. Give practical, useful suggestions." + memory_context
                             
                             # Check if we have enough info to provide recommendations automatically
                             has_key_info = len(extracted_info) >= 2  # At least 2 pieces of information
@@ -1125,37 +1227,37 @@ def create_voice_bot_server():
                                 'book kar do', 'book karo', 'book this', 'book that', 'select', 'choose', 'pick',
                                 'इसको बुक कर', 'यह बुक कर', 'इसे बुक कर', 'चुनता हूं', 'लेता हूं', 'करूंगा',
                                 'villa 243', 'hotel', 'option 1', 'option 2', 'first one', 'second one',
-                                'पहला', 'दूसरा', 'तीसरा', 'यह वाला', 'वो वाला'
+                                'पहला', 'दूसरा', 'तीसरा', 'यह वाला', 'वो वाला', 'ek ticket book kar do'
                             ])
                             
                             # If user confirms details or says "yes" and we have enough info, provide recommendations
-                            user_confirms = any(word in speech_result.lower() for word in ['yes', 'हाँ', 'हां', 'correct', 'right', 'okay', 'ok'])
+                            user_confirms = any(word in speech_result.lower() for word in ['yes', 'हाँ', 'हां', 'correct', 'right', 'okay', 'ok', 'theek hai'])
                             
                             if user_making_choice:
-                                return base_prompt + f"The user is making a specific choice or selection. Acknowledge their choice and proceed with booking/confirmation process. Don't provide more options - they've already decided. Focus on next steps like getting details or confirming the booking." + memory_context
+                                return base_prompt + f"The user is making a specific choice. Acknowledge their choice and proceed with booking/confirmation. Don't provide more options - they've decided. Focus on next steps like getting final details or confirming." + memory_context
                             elif user_confirms and has_key_info:
-                                return base_prompt + f"The user has confirmed the details. You have enough information to provide specific recommendations based on their request. Give 2-3 relevant options with names, brief descriptions, and helpful details. Don't say you'll 'look' or 'search' - directly provide useful recommendations now. Ask if they'd like more details about any of these options." + memory_context
+                                return base_prompt + f"The user confirmed details. You have enough information. Provide specific, actionable recommendations based on their request. Give 2-3 relevant options with helpful details. Be proactive and helpful." + memory_context
                             
-                            # Stage-specific prompts with memory awareness
+                            # Stage-specific prompts with enhanced memory awareness
                             if stage == "selection":
-                                return base_prompt + "The user is making a specific choice or selection. Acknowledge their choice positively and proceed with the next step (booking details, confirmation, etc.). Don't provide more options - they've decided. Be helpful and move forward." + memory_context
+                                return base_prompt + "The user is making a choice. Acknowledge positively and proceed with next steps. Don't provide more options - they've decided. Be helpful and move forward efficiently." + memory_context
                             elif stage == "initial_request":
                                 if not extracted_info:
-                                    return base_prompt + "The user is making an initial request. Ask clarifying questions to understand their needs better. Keep it concise (max 2 sentences)." + memory_context
+                                    return base_prompt + "Initial request. Ask clarifying questions to understand their needs. Keep it concise and focused (max 2 sentences)." + memory_context
                                 else:
-                                    return base_prompt + "The user is making a request. You already have some information. Ask only for missing details needed. Keep it concise (max 2 sentences)." + memory_context
+                                    return base_prompt + "User making a request. You have some information. Ask only for missing details needed. Be efficient and helpful (max 2 sentences)." + memory_context
                             elif stage == "details":
-                                return base_prompt + "The user is providing details. Acknowledge their information and ask for any missing details needed. Be specific but brief (max 3 sentences)." + memory_context
+                                return base_prompt + "User providing details. Acknowledge their information and ask for any missing details. Be specific but brief (max 3 sentences)." + memory_context
                             elif stage == "clarification":
-                                return base_prompt + "The user is confirming or clarifying. Provide a clear, helpful response and next steps if needed (max 2 sentences)." + memory_context
+                                return base_prompt + "User confirming/clarifying. Provide clear response and next steps if needed (max 2 sentences)." + memory_context
                             elif stage == "complex_query":
-                                return base_prompt + "The user has a complex question. Break down your response into clear points but keep it concise (max 4 sentences)." + memory_context
+                                return base_prompt + "Complex question. Break down response into clear points but keep it concise (max 4 sentences)." + memory_context
                             else:
-                                # For general responses, if we have key info, be more proactive
+                                # For general responses, be more proactive with context
                                 if has_key_info:
-                                    return base_prompt + f"You're helping the user with their request. Be helpful and continue the conversation. If you have enough details, provide specific recommendations instead of saying you'll 'look' or 'search'. Keep it conversational (max 3 sentences)." + memory_context
+                                    return base_prompt + f"Helping user with their request. Use available context to provide relevant, helpful responses. If you have enough details, be proactive and specific. Keep it conversational and efficient (max 3 sentences)." + memory_context
                                 else:
-                                    return base_prompt + "Respond helpfully and naturally. Keep it brief (max 2 sentences)." + memory_context
+                                    return base_prompt + "Respond helpfully and naturally. Keep it brief and focused (max 2 sentences)." + memory_context
                         
                         # Generate response with memory-aware prompting (optimized for speed)
                         enhanced_prompt = get_memory_aware_prompt(conversation_stage, detected_language, bot_app.call_language[call_sid])
@@ -1843,26 +1945,61 @@ def start_ngrok():
             return ngrok_url
     
     try:
-        # Start ngrok
-        ngrok_process = subprocess.Popen(['ngrok', 'http', '8000'], 
-                                       stdout=subprocess.DEVNULL, 
-                                       stderr=subprocess.DEVNULL)
+        print("🚀 Starting ngrok tunnel...")
         
-        # Wait for ngrok to start
-        for i in range(15):
+        # Check if ngrok is available
+        try:
+            subprocess.run(['ngrok', 'version'], capture_output=True, check=True, timeout=5)
+            print("✅ Ngrok is available")
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+            print(f"❌ Ngrok not found or not working: {e}")
+            print("💡 Please install ngrok: https://ngrok.com/download")
+            return None
+        
+        # Start ngrok with better error handling
+        print("🔄 Launching ngrok process...")
+        ngrok_process = subprocess.Popen(['ngrok', 'http', '8000'], 
+                                       stdout=subprocess.PIPE, 
+                                       stderr=subprocess.PIPE,
+                                       text=True)
+        
+        # Wait for ngrok to start with better feedback
+        print("⏳ Waiting for ngrok to initialize...")
+        for i in range(20):  # Increased timeout to 20 seconds
             time.sleep(1)
             ngrok_url = get_ngrok_url()
             if ngrok_url:
                 running_services['ngrok'] = ngrok_process
                 print(f"✅ Ngrok tunnel active: {ngrok_url}")
                 return ngrok_url
-            print(f"⏳ Waiting for ngrok... ({i+1}/15)")
+            
+            # Check if process is still running
+            if ngrok_process.poll() is not None:
+                stdout, stderr = ngrok_process.communicate()
+                print(f"❌ Ngrok process exited early")
+                print(f"STDOUT: {stdout}")
+                print(f"STDERR: {stderr}")
+                return None
+            
+            if i < 10:  # Only show progress for first 10 seconds
+                print(f"⏳ Waiting for ngrok... ({i+1}/20)")
         
-        print("❌ Ngrok failed to start within 15 seconds")
+        print("❌ Ngrok failed to start within 20 seconds")
+        print("💡 Try running 'ngrok http 8000' manually to check for issues")
+        
+        # Kill the process if it's still running
+        if ngrok_process.poll() is None:
+            ngrok_process.terminate()
+            try:
+                ngrok_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                ngrok_process.kill()
+        
         return None
         
     except Exception as e:
         print(f"❌ Error starting ngrok: {e}")
+        print("💡 Make sure ngrok is installed and in your PATH")
         return None
 
 def get_ngrok_url():
@@ -2167,6 +2304,15 @@ def make_smart_call(phone_number: str):
     """Make a smart call with all available features automatically enabled"""
     print(f"🤖 Making smart call to: {phone_number}")
     
+    # Check if ngrok is running
+    ngrok_url = get_ngrok_url()
+    if not ngrok_url:
+        print("❌ Ngrok is not running!")
+        print("💡 Please start ngrok first:")
+        print("   • Use menu option 4: 'Start Ngrok Manually'")
+        print("   • Or run 'ngrok http 8000' in a separate terminal")
+        return
+    
     # Auto-detect best available features
     features = []
     webhook_params = []
@@ -2405,10 +2551,11 @@ def main_menu():
         print("1. 📞 Make Smart Call")
         print("2. 🧪 Test System")
         print("3. 🔍 Status")
-        print("4. ❌ Exit")
+        print("4. 🌐 Start Ngrok Manually")
+        print("5. ❌ Exit")
         print("-" * 30)
         
-        choice = input("Choice (1-4): ").strip()
+        choice = input("Choice (1-5): ").strip()
         
         if choice == "1":
             phone = input("📞 Enter phone number: ").strip()
@@ -2425,11 +2572,21 @@ def main_menu():
             input("\nPress Enter to continue...")
         
         elif choice == "4":
+            print("🌐 Starting ngrok manually...")
+            ngrok_url = start_ngrok()
+            if ngrok_url:
+                print(f"✅ Ngrok started: {ngrok_url}")
+            else:
+                print("❌ Failed to start ngrok")
+                print("💡 Try running 'ngrok http 8000' in a separate terminal")
+            input("\nPress Enter to continue...")
+        
+        elif choice == "5":
             print("👋 Goodbye!")
             break
         
         else:
-            print("❌ Invalid choice (1-4)")
+            print("❌ Invalid choice (1-5)")
             time.sleep(1)
 
 def show_project_info():
@@ -2470,13 +2627,45 @@ def cleanup_on_exit():
     def signal_handler(signum, frame):
         print("\n🔄 Shutting down gracefully...")
         
-        # Stop ngrok
-        if ngrok_process:
+        # Stop ngrok properly
+        if ngrok_process and ngrok_process.poll() is None:
             try:
+                print("🔄 Stopping ngrok...")
                 ngrok_process.terminate()
-                print("✅ Ngrok stopped")
-            except:
-                pass
+                # Wait for graceful shutdown
+                try:
+                    ngrok_process.wait(timeout=5)
+                    print("✅ Ngrok stopped gracefully")
+                except subprocess.TimeoutExpired:
+                    print("⚠️ Force killing ngrok...")
+                    ngrok_process.kill()
+                    ngrok_process.wait()
+                    print("✅ Ngrok force stopped")
+            except Exception as e:
+                print(f"⚠️ Error stopping ngrok: {e}")
+        
+        # Clean up running services
+        for service_name, process in running_services.items():
+            if process:
+                try:
+                    # Check if it's a subprocess (has poll method) or a thread
+                    if hasattr(process, 'poll'):
+                        # It's a subprocess
+                        if process.poll() is None:
+                            process.terminate()
+                            process.wait(timeout=3)
+                    elif hasattr(process, 'is_alive'):
+                        # It's a thread
+                        if process.is_alive():
+                            # For threads, we can't force terminate, just log
+                            print(f"⚠️ Thread {service_name} is still running")
+                except Exception as e:
+                    print(f"⚠️ Error cleaning up {service_name}: {e}")
+                    try:
+                        if hasattr(process, 'kill'):
+                            process.kill()
+                    except:
+                        pass
         
         print("✅ Cleanup complete. Goodbye!")
         sys.exit(0)
@@ -2515,13 +2704,29 @@ def main():
         return
     
     # 3. Start ngrok
+    print("🌐 Starting ngrok tunnel...")
     ngrok_url = start_ngrok()
     if not ngrok_url:
-        print("❌ Ngrok failed")
-        return
+        print("⚠️ Ngrok failed to start automatically")
+        print("💡 You can start it manually from the menu (option 4)")
+        print("💡 Or run 'ngrok http 8000' in a separate terminal")
+        
+        # Check if ngrok is already running
+        existing_ngrok = get_ngrok_url()
+        if existing_ngrok:
+            print(f"✅ Found existing ngrok tunnel: {existing_ngrok}")
+            ngrok_url = existing_ngrok
+        else:
+            print("❌ No ngrok tunnel found")
+            print("⚠️ You won't be able to make calls until ngrok is running")
     
-    print("✅ All services ready!")
-    print(f"🌐 Webhook: {ngrok_url}/voice")
+    if ngrok_url:
+        print("✅ All services ready!")
+        print(f"🌐 Webhook: {ngrok_url}/voice")
+    else:
+        print("⚠️ Services started but ngrok is not available")
+        print("💡 Use menu option 4 to start ngrok manually")
+    
     time.sleep(2)
     
     # Show main menu

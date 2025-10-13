@@ -9,11 +9,8 @@ import json
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-# Import WebSocket client for real-time updates
-try:
-    from .websocket_client import websocket_client
-except ImportError:
-    from websocket_client import websocket_client
+# WebSocket client for real-time updates
+websocket_client = None
 
 class DashboardIntegration:
     """Integration with Sara Dashboard for real-time call logging"""

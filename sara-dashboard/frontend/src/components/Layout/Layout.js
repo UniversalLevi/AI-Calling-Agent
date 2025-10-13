@@ -30,14 +30,14 @@ const Layout = () => {
   // Show loading spinner while authenticating
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <LoadingSpinner size="lg" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-900">
       {/* Sidebar */}
       <Sidebar 
         isOpen={sidebarOpen} 
@@ -66,7 +66,7 @@ const Layout = () => {
           className="fixed inset-0 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         >
-          <div className="absolute inset-0 bg-gray-600 opacity-75"></div>
+          <div className="absolute inset-0 bg-gray-800 opacity-75"></div>
         </div>
       )}
     </div>
