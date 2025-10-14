@@ -41,8 +41,13 @@ class DashboardWebSocketClient:
                 print(f"❌ Dashboard WebSocket connection error: {data}")
                 self.connected = False
             
-            # Connect to dashboard
-            self.sio.connect(self.dashboard_url)
+            # Try to connect to dashboard with timeout
+            try:
+                self.sio.connect(self.dashboard_url, wait_timeout=2)
+            except Exception as conn_error:
+                print(f"⚠️ Dashboard WebSocket not available: {conn_error}")
+                print("⚠️ Continuing without real-time dashboard updates")
+                self.connected = False
             
         except Exception as e:
             print(f"❌ Failed to initialize WebSocket client: {e}")

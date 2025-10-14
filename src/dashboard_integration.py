@@ -11,8 +11,8 @@ from typing import Dict, Any, Optional
 
 # WebSocket client for real-time updates
 try:
-    from .websocket_client import WebSocketClient
-    websocket_client = WebSocketClient()
+    from .websocket_client import DashboardWebSocketClient
+    websocket_client = DashboardWebSocketClient()
 except ImportError:
     websocket_client = None
 
