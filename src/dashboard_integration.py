@@ -10,7 +10,11 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 # WebSocket client for real-time updates
-websocket_client = None
+try:
+    from .websocket_client import WebSocketClient
+    websocket_client = WebSocketClient()
+except ImportError:
+    websocket_client = None
 
 class DashboardIntegration:
     """Integration with Sara Dashboard for real-time call logging"""
@@ -86,7 +90,11 @@ class DashboardIntegration:
         
         # 2. Emit real-time WebSocket event for instant updates
         try:
-            websocket_client.emit_call_started(call_data)
+            if websocket_client:
+                websocket_client.emit_call_started(call_data)
+                print(f"📡 Emitted call-started event: {call_data.get('call_sid', '')}")
+            else:
+                print("⚠️ WebSocket client not available")
         except Exception as e:
             print(f"❌ WebSocket emit error: {e}")
         
@@ -119,7 +127,8 @@ class DashboardIntegration:
         
         # 2. Emit real-time WebSocket event
         try:
-            websocket_client.emit_transcript_update(call_sid, speaker, text)
+            if websocket_client:
+                websocket_client.emit_transcript_update(call_sid, speaker, text)
         except Exception as e:
             print(f"❌ WebSocket transcript emit error: {e}")
         
@@ -167,7 +176,11 @@ class DashboardIntegration:
         
         # 2. Emit real-time WebSocket event
         try:
-            websocket_client.emit_call_ended(call_data)
+            if websocket_client:
+                websocket_client.emit_call_ended(call_data)
+                print(f"📡 Emitted call-ended event: {call_data.get('call_sid', '')}")
+            else:
+                print("⚠️ WebSocket client not available")
         except Exception as e:
             print(f"❌ WebSocket call-end emit error: {e}")
         
@@ -180,11 +193,15 @@ class DashboardIntegration:
         
         try:
             # Use WebSocket for instant updates
-            if event_type == 'call-interrupted':
-                websocket_client.emit_call_interrupted(data.get('call_sid', ''), data)
-            elif event_type == 'call-updated':
-                websocket_client.emit_call_updated(data.get('call_sid', ''), data)
+            if websocket_client:
+                if event_type == 'call-interrupted':
+                    websocket_client.emit_call_interrupted(data.get('call_sid', ''), data)
+                elif event_type == 'call-updated':
+                    websocket_client.emit_call_updated(data.get('call_sid', ''), data)
+                else:
+                    print(f"⚠️ Unknown event type: {event_type}")
             else:
+                print("⚠️ WebSocket client not available")
                 # Fallback to HTTP API
                 payload = {
                     'type': event_type,
