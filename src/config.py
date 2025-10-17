@@ -54,6 +54,8 @@ LANGUAGE RULES (CRITICAL):
 - If user speaks English, respond in English
 - NEVER respond in English when user speaks Hindi
 - Use natural Hinglish mixing: "Aapko hotel book karna hai? Main help kar sakti hun"
+- ALWAYS use Romanized Hindi (Latin script) for Hindi words, never Devanagari script
+- Examples: "Namaste" not "नमस्ते", "Aapka naam kya hai?" not "आपका नाम क्या है?"
 
 CONVERSATION STYLE:
 - Short, clear sentences (10-15 words max)
@@ -74,6 +76,21 @@ USE_COQUI_TTS = os.getenv("USE_COQUI_TTS", "false").lower() == "true"
 TTS_VOICE = os.getenv("TTS_VOICE", "en")
 HINDI_TTS_VOICE = os.getenv("HINDI_TTS_VOICE", "hi")
 ENGLISH_TTS_VOICE = os.getenv("ENGLISH_TTS_VOICE", "en")
+
+# Human-like Features Configuration
+ENABLE_NATURAL_PAUSES = os.getenv("ENABLE_NATURAL_PAUSES", "true").lower() == "true"
+ENABLE_FILLER_WORDS = os.getenv("ENABLE_FILLER_WORDS", "true").lower() == "true"
+FILLER_FREQUENCY = float(os.getenv("FILLER_FREQUENCY", "0.25"))  # 25% of responses
+PAUSE_DURATION_MS = (200, 600)  # Random pause range
+
+# Streaming Configuration
+ENABLE_STREAMING_RESPONSES = os.getenv("ENABLE_STREAMING_RESPONSES", "true").lower() == "true"
+STREAMING_CHUNK_SIZE = int(os.getenv("STREAMING_CHUNK_SIZE", "10"))  # Tokens per chunk
+
+# TTS Cache Configuration
+ENABLE_TTS_CACHE = os.getenv("ENABLE_TTS_CACHE", "true").lower() == "true"
+TTS_CACHE_DIR = os.getenv("TTS_CACHE_DIR", "tts_cache")
+PRE_GENERATE_COMMON_PHRASES = os.getenv("PRE_GENERATE_COMMON_PHRASES", "true").lower() == "true"
 
 
 # =============================================================================

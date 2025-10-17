@@ -55,7 +55,17 @@ def detect_language(text: str) -> str:
         'dekh', 'dekho', 'bolo', 'batao', 'suno', 'samjho',
         'theek', 'bilkul', 'zaroor', 'shayad', 'kabhi',
         'hotel', 'restaurant', 'room', 'book', 'karo', 'karna',
-        'mein', 'me', 'ko', 'se', 'par', 'ke', 'ki', 'ka'
+        'mein', 'me', 'ko', 'se', 'par', 'ke', 'ki', 'ka',
+        # Additional common Hinglish words
+        'accha', 'acha', 'badhiya', 'sahi', 'thik', 'okay', 'ok',
+        'please', 'sorry', 'excuse', 'thank', 'thanks',
+        'help', 'assist', 'support', 'service', 'customer',
+        'time', 'date', 'day', 'night', 'morning', 'evening',
+        'phone', 'call', 'message', 'email', 'address',
+        'name', 'naam', 'age', 'umar', 'city', 'sheher',
+        'price', 'cost', 'money', 'rupees', 'rs', 'paisa',
+        'good', 'bad', 'best', 'better', 'nice', 'great',
+        'yes', 'no', 'maybe', 'sure', 'definitely', 'absolutely'
     ]
     for kw in hinglish_keywords:
         if kw in lower_text:
@@ -63,12 +73,14 @@ def detect_language(text: str) -> str:
     # Determine language based on thresholds and hints (Master Branch Logic)
     if hindi_percentage >= 60:
         return 'hi'
-    elif english_percentage >= 70 and hinglish_hits == 0:
+    elif english_percentage >= 80 and hinglish_hits == 0:
         return 'en'
-    elif hinglish_hits >= 1 and english_percentage >= 40 and hindi_percentage < 10:
+    elif hinglish_hits >= 1 and english_percentage >= 30 and hindi_percentage < 15:
         return 'mixed'
-    elif english_percentage >= 50 and hindi_percentage < 10 and hinglish_hits <= 1:
+    elif english_percentage >= 70 and hindi_percentage < 5 and hinglish_hits <= 1:
         return 'en'
+    elif hindi_percentage >= 30:
+        return 'hi'
     else:
         return 'mixed'
 
@@ -90,6 +102,9 @@ Examples:
 - "Namaste! Main Sara hun, aapki madad kar sakti hun"
 - "Aapko kis sheher mein hotel chahiye?"
 - "Theek hai, main check karti hun"
+- "Bilkul! Main aapki help kar sakti hun"
+- "Aapka naam kya hai?"
+- "Kitne din ke liye stay karna hai?"
 
 Be warm, helpful, and conversational. Ask one question at a time.""",
         
@@ -108,6 +123,10 @@ Examples:
 - "Bilkul! Main aapki madad kar sakti hun"
 - "Aapko kis sheher mein hotel chahiye?"
 - "Theek hai, main check karti hun"
+- "Perfect! Main aapki help kar sakti hun"
+- "Aapka naam kya hai?"
+- "Kitne din ke liye stay karna hai?"
+- "Great! Main aapko best options deti hun"
 
 Be warm, helpful, and conversational. Ask one question at a time."""
     }

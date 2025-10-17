@@ -21,210 +21,19 @@ from indic_transliteration.sanscript import transliterate, DEVANAGARI, ITRANS
 # -------------------------
 # Enhanced replacements dictionary for Indian context
 # -------------------------
-ENHANCED_REPLACEMENTS = {
-    # Basic pronouns and common words
-    'नमस्ते': 'Namaste',
-    'हैं': 'hain',
-    'है': 'hai',
-    'मैं': 'main',
-    'आप': 'aap',
-    'कैसे': 'kaise',
-    'क्या': 'kya',
-    'कहाँ': 'kahan',
-    'कब': 'kab',
-    'क्यों': 'kyun',
-    'कितना': 'kitna',
-    'कौन': 'kaun',
-    'कौन सा': 'kaun sa',
-    'कौन सी': 'kaun si',
-    'कौन से': 'kaun se',
-    'मुझे': 'mujhe',
-    'तुम्हें': 'tumhe',
-    'आपको': 'aapko',
-    'हमें': 'hamein',
-    'उन्हें': 'unhein',
-    'इस': 'is',
-    'उस': 'us',
-    'यह': 'yah',
-    'वह': 'vah',
-    'ये': 'ye',
-    'वे': 've',
-    
-    # Possessive pronouns
-    'मेरा': 'mera',
-    'मेरी': 'meri',
-    'मेरे': 'mere',
-    'आपका': 'aapka',
-    'आपकी': 'aapki',
-    'आपके': 'aapke',
-    'हमारा': 'hamara',
-    'हमारी': 'hamari',
-    'हमारे': 'hamare',
-    'उनका': 'unka',
-    'उनकी': 'unki',
-    'उनके': 'unke',
-    
-    # Common verbs
-    'होना': 'hona',
-    'करना': 'karna',
-    'जाना': 'jana',
-    'आना': 'aana',
-    'देना': 'dena',
-    'लेना': 'lena',
-    'बोलना': 'bolna',
-    'सुनना': 'sunna',
-    'देखना': 'dekhna',
-    'समझना': 'samajhna',
-    'पसंद': 'pasand',
-    'चाहिए': 'chahiye',
-    'चाहता': 'chahta',
-    'चाहती': 'chahti',
-    
-    # Time and place
-    'आज': 'aaj',
-    'कल': 'kal',
-    'परसों': 'parson',
-    'सुबह': 'subah',
-    'दोपहर': 'dopahar',
-    'शाम': 'shaam',
-    'रात': 'raat',
-    'यहाँ': 'yahan',
-    'वहाँ': 'vahan',
-    'घर': 'ghar',
-    'ऑफिस': 'office',
-    'स्कूल': 'school',
-    'हॉस्पिटल': 'hospital',
-    
-    # Numbers (spoken form)
-    'एक': 'ek',
-    'दो': 'do',
-    'तीन': 'teen',
-    'चार': 'char',
-    'पांच': 'paanch',
-    'छह': 'chhah',
-    'सात': 'saat',
-    'आठ': 'aath',
-    'नौ': 'nau',
-    'दस': 'das',
-    
-    # Common adjectives
-    'अच्छा': 'accha',
-    'बुरा': 'bura',
-    'बड़ा': 'bada',
-    'छोटा': 'chhota',
-    'नया': 'naya',
-    'पुराना': 'purana',
-    'साफ': 'saaf',
-    'गंदा': 'ganda',
-    'तेज़': 'tez',
-    'धीमा': 'dheema',
-    
-    # Hotel and travel related
-    'होटल': 'hotel',
-    'बुकिंग': 'booking',
-    'रूम': 'room',
-    'कमरा': 'kamra',
-    'चेक-इन': 'check-in',
-    'चेक-आउट': 'check-out',
-    'रिजर्वेशन': 'reservation',
-    'टिकट': 'ticket',
-    'यात्रा': 'yatra',
-    'सफर': 'safar',
-    
-    # Technology and modern terms
-    'वाई-फाई': 'WiFi',
-    'इंटरनेट': 'internet',
-    'मोबाइल': 'mobile',
-    'फोन': 'phone',
-    'कंप्यूटर': 'computer',
-    'लैपटॉप': 'laptop',
-    'एप': 'app',
-    'वेबसाइट': 'website',
-    'ईमेल': 'email',
-    'पासवर्ड': 'password',
-    
-    # Food and dining
-    'खाना': 'khana',
-    'पानी': 'paani',
-    'चाय': 'chai',
-    'कॉफी': 'coffee',
-    'दूध': 'doodh',
-    'रोटी': 'roti',
-    'चावल': 'chawal',
-    'दाल': 'daal',
-    'सब्जी': 'sabzi',
-    'मिठाई': 'mithai',
-    
-    # Family and relationships
-    'पापा': 'papa',
-    'मम्मी': 'mummy',
-    'भाई': 'bhai',
-    'बहन': 'behen',
-    'दोस्त': 'dost',
-    'पति': 'pati',
-    'पत्नी': 'patni',
-    'बेटा': 'beta',
-    'बेटी': 'beti',
-    
-    # Common phrases
-    'धन्यवाद': 'dhanyawad',
-    'शुक्रिया': 'shukriya',
-    'माफ करें': 'maaf karein',
-    'कृपया': 'kripya',
-    'जी हाँ': 'ji haan',
-    'जी नहीं': 'ji nahi',
-    'ठीक है': 'theek hai',
-    'कोई बात नहीं': 'koi baat nahi',
-    'बहुत अच्छा': 'bahut accha',
-    'मदद': 'madad',
-    
-    # Cities and places (common ones)
-    'दिल्ली': 'Delhi',
-    'मुंबई': 'Mumbai',
-    'बैंगलोर': 'Bangalore',
-    'चेन्नई': 'Chennai',
-    'कोलकाता': 'Kolkata',
-    'हैदराबाद': 'Hyderabad',
-    'पुणे': 'Pune',
-    'जयपुर': 'Jaipur',
-    'अहमदाबाद': 'Ahmedabad',
-    'सूरत': 'Surat',
-    
-    # Business and professional terms
-    'मीटिंग': 'meeting',
-    'प्रोजेक्ट': 'project',
-    'काम': 'kaam',
-    'कार्यालय': 'karyalay',
-    'कंपनी': 'company',
-    'बिजनेस': 'business',
-    'क्लाइंट': 'client',
-    'कस्टमर': 'customer',
-    'सर्विस': 'service',
-    'प्रोडक्ट': 'product',
-    
-    # Emergency and health
-    'डॉक्टर': 'doctor',
-    'हॉस्पिटल': 'hospital',
-    'दवा': 'dawa',
-    'बीमार': 'bimar',
-    'स्वस्थ': 'swasth',
-    'एमरजेंसी': 'emergency',
-    'पुलिस': 'police',
-    'फायर': 'fire',
-    'एम्बुलेंस': 'ambulance',
-    
-    # Common English words that are often mixed
-    'ओके': 'OK',
-    'हैलो': 'hello',
-    'हाय': 'hi',
-    'बाय': 'bye',
-    'यस': 'yes',
-    'नो': 'no',
-    'प्लीज़': 'please',
-    'थैंक यू': 'thank you',
-    'सॉरी': 'sorry',
-    'एक्सक्यूज़ मी': 'excuse me'
-}
+# Load replacements from JSON file
+def load_replacements_from_json():
+    """Load replacements from hinglish_translations.json file"""
+    try:
+        json_path = Path(__file__).parent / "hinglish_translations.json"
+        with open(json_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"⚠️ Failed to load JSON replacements: {e}")
+        return {}
+
+# Load replacements from JSON file
+ENHANCED_REPLACEMENTS = load_replacements_from_json()
 
 # -------------------------
 # Utilities: script detection & splitting
@@ -282,7 +91,7 @@ def compile_devanagari_prepattern(dev_keys):
         return None
     esc_keys = [re.escape(k) for k in sort_keys_by_length_desc(dev_keys)]
     pattern = r'(' + '|'.join(esc_keys) + r')'
-    pattern = r'(?<![\p{Devanagari}])' + pattern + r'(?![\p{Devanagari}])'
+    # Simplified pattern - just match the Devanagari words
     return re.compile(pattern)
 
 def apply_pre_devanagari_overrides(text: str, replacements: dict) -> str:

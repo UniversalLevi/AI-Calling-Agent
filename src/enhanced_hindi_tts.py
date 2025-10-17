@@ -12,6 +12,13 @@ import glob
 from pathlib import Path
 from typing import Optional
 
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 try:
     from .language_detector import detect_language
 except ImportError:
@@ -30,7 +37,7 @@ class EnhancedHindiTTS:
         """Initialize available TTS providers based on .env configuration"""
         
         # Get preferred TTS provider from .env
-        preferred_provider = os.getenv('TTS_PROVIDER', 'twilio').lower()
+        preferred_provider = os.getenv('TTS_PROVIDER', 'openai').lower()
         print(f"🎯 Preferred TTS provider from .env: {preferred_provider}")
         
         # Add preferred provider first if available
@@ -182,7 +189,7 @@ class EnhancedHindiTTS:
             import openai
             
             api_key = os.getenv('OPENAI_API_KEY')
-            model = os.getenv('OPENAI_TTS_MODEL', 'tts-1')  # Use standard model for natural speech
+            model = os.getenv('OPENAI_TTS_MODEL', 'tts-1')  # Fastest model for speed
             
             # Use female voice for Sara with master branch settings
             voice = os.getenv('OPENAI_TTS_VOICE', 'nova')  # Nova is a female voice
@@ -519,6 +526,19 @@ class EnhancedHindiTTS:
         """
         print(f"🎤 Generating enhanced Hindi TTS for: '{text}'")
         
+        # Check cache first
+        try:
+            from .tts_cache import get_tts_cache
+            cache = get_tts_cache()
+            
+            # Try to get cached version
+            cached_file = cache.get_cached_audio(text, "hi", "nova")
+            if cached_file:
+                print(f"🎵 Using cached TTS: {text[:30]}...")
+                return cached_file
+        except ImportError:
+            pass
+        
         # Detect if text contains Hindi characters
         has_hindi = any('\u0900' <= char <= '\u097F' for char in text)
         
@@ -551,6 +571,19 @@ class EnhancedHindiTTS:
                 
                 if result:
                     print(f"✅ Enhanced Hindi TTS successful with {provider}")
+                    
+                    # Cache the result for future use
+                    try:
+                        from .tts_cache import get_tts_cache
+                        cache = get_tts_cache()
+                        # Get absolute path to the audio file
+                        audio_dir = os.path.join(os.path.dirname(__file__), '..', 'audio_files')
+                        abs_result = os.path.join(audio_dir, os.path.basename(result))
+                        if os.path.exists(abs_result):
+                            cache.cache_audio(text, "hi", "nova", abs_result)
+                    except ImportError:
+                        pass
+                    
                     # Clean up old files after successful generation
                     self._cleanup_old_audio_files()
                     return result

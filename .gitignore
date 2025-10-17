@@ -3,6 +3,8 @@
 .env.local
 .env.production
 .env.staging
+sara-dashboard/backend/.env
+sara-dashboard/frontend/.env
 *.key
 *.pem
 *.p12
@@ -46,6 +48,7 @@ ENV/
 
 # Audio files (generated at runtime)
 audio_files/
+tts_cache/
 *.mp3
 *.wav
 *.m4a

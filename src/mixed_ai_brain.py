@@ -9,6 +9,13 @@ import os
 from typing import Optional
 from abc import ABC, abstractmethod
 
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 try:
     from .language_detector import detect_language, get_language_prompt, get_greeting, get_fallback_message
 except ImportError:
@@ -23,6 +30,12 @@ class MixedAIProvider(ABC):
     def ask(self, user_text: str, language: str = None) -> str:
         """Process user input and return AI response in appropriate language"""
         pass
+    
+    def ask_stream(self, user_text: str, language: str = None):
+        """Stream AI response tokens as they arrive (optional implementation)"""
+        # Default implementation falls back to regular ask()
+        response = self.ask(user_text, language)
+        yield response
 
 
 class MixedOpenAIProvider(MixedAIProvider):
@@ -82,6 +95,54 @@ class MixedOpenAIProvider(MixedAIProvider):
         except Exception as e:
             print(f"❌ OpenAI error: {e}")
             return get_fallback_message(language)
+    
+    def ask_stream(self, user_text: str, language: str = None):
+        """Process user input with OpenAI streaming and yield tokens as they arrive"""
+        # Detect language if not specified
+        if language is None:
+            language = detect_language(user_text)
+        
+        # Get appropriate system prompt
+        system_prompt = get_language_prompt(language)
+        
+        # Add language instruction based on detected language
+        if language in ['hi', 'mixed']:
+            language_instruction = "\n\nIMPORTANT: User is speaking Hindi/Hinglish. Respond in Romanized Hinglish (like: 'Bilkul! Aapko kis sheher mein hotel chahiye?'). Do NOT respond in English."
+        else:
+            language_instruction = "\n\nRespond in English."
+        
+        # Append language instruction to system prompt
+        enhanced_prompt = system_prompt + language_instruction
+        
+        # Add system prompt if this is the first message
+        if not self.history:
+            self.history.append({"role": "system", "content": enhanced_prompt})
+        
+        # Add user message
+        self.history.append({"role": "user", "content": user_text})
+        
+        try:
+            stream = self.client.chat.completions.create(
+                model=self.model,
+                messages=self.history,
+                temperature=0.6,
+                stream=True
+            )
+            
+            full_response = ""
+            for chunk in stream:
+                if chunk.choices[0].delta.content is not None:
+                    content = chunk.choices[0].delta.content
+                    full_response += content
+                    yield content
+            
+            # Add complete response to history
+            self.history.append({"role": "assistant", "content": full_response})
+            
+        except Exception as e:
+            print(f"❌ OpenAI streaming error: {e}")
+            fallback = get_fallback_message(language)
+            yield fallback
 
 
 class MixedGeminiProvider(MixedAIProvider):

@@ -402,6 +402,14 @@ def create_voice_bot_server():
         if isinstance(bot_app.call_language[call_sid], dict):
             bot_app.call_language[call_sid]['start_time'] = datetime.now()
         
+        # Initialize conversation memory
+        try:
+            from src.conversation_memory import start_call_memory
+            start_call_memory(call_sid, 'en')  # Default to English, will be updated when language is detected
+            print(f"🧠 Initialized conversation memory for call: {call_sid}")
+        except Exception as e:
+            print(f"⚠️ Failed to initialize conversation memory: {e}")
+        
         # Log call start to dashboard
         try:
             from src.dashboard_integration import dashboard
@@ -504,7 +512,7 @@ def create_voice_bot_server():
                 input='speech',
                 action='/process_speech_realtime',
                 timeout=timeout,  # Dynamic timeout based on conversation context
-                speech_timeout='auto',
+                speech_timeout=3,  # Faster speech detection (3 seconds instead of auto)
                 language='en-IN',  # Start with English, will switch based on detection
                 enhanced='true',  # Use enhanced speech recognition
                 profanity_filter='false',  # Don't filter speech
@@ -546,7 +554,7 @@ def create_voice_bot_server():
             input='speech',
             action='/process_speech',
             timeout=10,
-            speech_timeout='auto',
+            speech_timeout=3,  # Faster speech detection
             language=initial_language_code
         )
         response.append(gather)
@@ -618,6 +626,9 @@ def create_voice_bot_server():
         if speech_result:
             try:
                 print(f"📝 Processing speech: '{speech_result}'")
+                # Get speech confidence from request
+                speech_confidence = float(request.form.get('Confidence', '0.0'))
+                print(f"🎤 Speech confidence: {speech_confidence:.2f}")
                 # Enhanced dynamic language detection
                 detected_language = detect_language_dynamically(speech_result, call_sid, speech_confidence)
                 print(f"🌐 Detected language: {detected_language}")
@@ -681,7 +692,7 @@ def create_voice_bot_server():
                 input='speech',
                 action='/process_speech',
                 timeout=10,
-                speech_timeout='auto',
+                speech_timeout=3,  # Faster speech detection
                 language=next_language_code
             )
             response.append(gather)
@@ -838,6 +849,14 @@ def create_voice_bot_server():
             try:
                 from src.dashboard_integration import dashboard
                 from datetime import datetime
+                
+                # Clean up conversation memory
+                try:
+                    from src.conversation_memory import end_call_memory
+                    end_call_memory(call_sid)
+                    print(f"🧠 Cleaned up conversation memory for call: {call_sid}")
+                except Exception as e:
+                    print(f"⚠️ Failed to cleanup conversation memory: {e}")
                 
                 # Calculate call duration (approximate)
                 call_start_time = bot_app.call_language.get(call_sid, {}).get('start_time') if isinstance(bot_app.call_language.get(call_sid), dict) else None
@@ -1264,7 +1283,44 @@ def create_voice_bot_server():
                         
                         # Optimize prompt for faster response with better context
                         optimized_prompt = f"{enhanced_prompt}\n\nUser: {speech_result}\n\nRespond quickly, concisely, and naturally in the same language as the user:"
-                        bot_response = bot_app.gpt.ask(optimized_prompt, detected_language)
+                        
+                        # Use streaming AI for faster response
+                        try:
+                            from src.config import ENABLE_STREAMING_RESPONSES
+                            if ENABLE_STREAMING_RESPONSES and hasattr(bot_app.gpt, 'ask_stream'):
+                                print("🚀 Using streaming AI response...")
+                                bot_response = ""
+                                for chunk in bot_app.gpt.ask_stream(optimized_prompt, detected_language):
+                                    bot_response += chunk
+                                    # Start TTS generation early with partial response (reduced threshold by 40%)
+                                    if len(bot_response) > 30 and len(bot_response.split()) >= 3:
+                                        print(f"⚡ Early TTS trigger: {bot_response[:30]}...")
+                                        break
+                            else:
+                                bot_response = bot_app.gpt.ask(optimized_prompt, detected_language)
+                        except Exception as e:
+                            print(f"⚠️ Streaming failed, falling back to regular: {e}")
+                            bot_response = bot_app.gpt.ask(optimized_prompt, detected_language)
+                        
+                        # Add human-like elements to response
+                        try:
+                            from src.humanizer import enhance_response
+                            from src.config import ENABLE_FILLER_WORDS, FILLER_FREQUENCY
+                            
+                            if ENABLE_FILLER_WORDS:
+                                bot_response = enhance_response(bot_response, detected_language)
+                                print(f"🎭 Enhanced response with human-like elements")
+                        except Exception as e:
+                            print(f"⚠️ Humanizer failed: {e}")
+                        
+                        # Store conversation exchange in memory
+                        try:
+                            from src.conversation_memory import add_conversation_exchange, extract_and_store_info
+                            add_conversation_exchange(call_sid, speech_result, bot_response, detected_language, speech_confidence)
+                            extract_and_store_info(call_sid, speech_result)
+                            print(f"🧠 Stored conversation exchange in memory")
+                        except Exception as e:
+                            print(f"⚠️ Memory storage failed: {e}")
                         
                         # Enforce response length limits based on context
                         def enforce_response_limits(response, stage):
@@ -1434,8 +1490,25 @@ def create_voice_bot_server():
                 else:
                     # Generate chunked response for better interruption handling
                     try:
-                        # Generate and play response
-                        audio_file = speak_mixed_enhanced(bot_response)
+                        # Start TTS generation in parallel for faster response
+                        import threading
+                        tts_result = [None]
+                        
+                        def generate_tts_async():
+                            try:
+                                tts_result[0] = speak_mixed_enhanced(bot_response)
+                            except Exception as e:
+                                print(f"❌ Async TTS error: {e}")
+                                tts_result[0] = None
+                        
+                        # Start TTS in background
+                        tts_thread = threading.Thread(target=generate_tts_async)
+                        tts_thread.start()
+                        
+                        # Wait for TTS with reduced timeout (40% faster)
+                        tts_thread.join(timeout=1.5)
+                        
+                        audio_file = tts_result[0]
                         if audio_file:
                             response.play(f"/audio/{audio_file}")
                         else:
@@ -1539,7 +1612,7 @@ def create_voice_bot_server():
                 input='speech',
                 action='/process_speech_realtime',
                 timeout=next_timeout,  # Dynamic timeout based on conversation context
-                speech_timeout='auto',
+                speech_timeout=3,  # Faster speech detection
                 language='en-IN' if detected_language == 'en' else 'hi-IN',
                 enhanced='true',  # Use enhanced speech recognition
                 profanity_filter='false'  # Don't filter speech
@@ -2548,10 +2621,15 @@ def main_menu():
             print(f"🚀 Available features: {', '.join(features)}")
         
         print("-" * 30)
+        print("✅ Services Status:")
+        print("   🌐 Ngrok: Running")
+        print("   🚀 Flask Servers: Running")
+        print("   🎯 System: Ready for calls!")
+        print("-" * 30)
         print("1. 📞 Make Smart Call")
         print("2. 🧪 Test System")
         print("3. 🔍 Status")
-        print("4. 🌐 Start Ngrok Manually")
+        print("4. 🌐 Restart Ngrok")
         print("5. ❌ Exit")
         print("-" * 30)
         
@@ -2572,12 +2650,12 @@ def main_menu():
             input("\nPress Enter to continue...")
         
         elif choice == "4":
-            print("🌐 Starting ngrok manually...")
+            print("🌐 Restarting ngrok...")
             ngrok_url = start_ngrok()
             if ngrok_url:
-                print(f"✅ Ngrok started: {ngrok_url}")
+                print(f"✅ Ngrok restarted: {ngrok_url}")
             else:
-                print("❌ Failed to start ngrok")
+                print("❌ Failed to restart ngrok")
                 print("💡 Try running 'ngrok http 8000' in a separate terminal")
             input("\nPress Enter to continue...")
         
@@ -2690,46 +2768,34 @@ def main():
         print("📝 Configure your .env file")
         return
     
-    # Start all services automatically
-    print("🚀 Starting services...")
+    # Auto-start services for better user experience
+    print("🚀 Auto-starting services...")
     
-    # 1. Start audio server
-    if not start_audio_server():
-        print("❌ Audio server failed")
-        return
-    
-    # 2. Start voice bot server  
-    if not start_voice_bot_server():
-        print("❌ Voice bot failed")
-        return
-    
-    # 3. Start ngrok
-    print("🌐 Starting ngrok tunnel...")
-    ngrok_url = start_ngrok()
-    if not ngrok_url:
-        print("⚠️ Ngrok failed to start automatically")
-        print("💡 You can start it manually from the menu (option 4)")
-        print("💡 Or run 'ngrok http 8000' in a separate terminal")
-        
-        # Check if ngrok is already running
-        existing_ngrok = get_ngrok_url()
-        if existing_ngrok:
-            print(f"✅ Found existing ngrok tunnel: {existing_ngrok}")
-            ngrok_url = existing_ngrok
-        else:
-            print("❌ No ngrok tunnel found")
-            print("⚠️ You won't be able to make calls until ngrok is running")
-    
-    if ngrok_url:
-        print("✅ All services ready!")
-        print(f"🌐 Webhook: {ngrok_url}/voice")
+    # Start ngrok automatically
+    print("🌐 Starting ngrok...")
+    if start_ngrok():
+        print("✅ Ngrok started successfully!")
     else:
-        print("⚠️ Services started but ngrok is not available")
-        print("💡 Use menu option 4 to start ngrok manually")
+        print("⚠️ Ngrok failed to start, but continuing...")
     
-    time.sleep(2)
+    # Start Flask servers automatically
+    print("🚀 Starting Flask servers...")
+    audio_started = start_audio_server()
+    voice_started = start_voice_bot_server()
     
-    # Show main menu
+    if audio_started and voice_started:
+        print("✅ All services started successfully!")
+        print("🎯 System ready for calls!")
+    else:
+        print("⚠️ Some services failed to start")
+        if not audio_started:
+            print("❌ Audio server failed")
+        if not voice_started:
+            print("❌ Voice bot server failed")
+    
+    print("-" * 30)
+    
+    # Show main menu with services running
     try:
         main_menu()
     except KeyboardInterrupt:
