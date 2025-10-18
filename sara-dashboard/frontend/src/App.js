@@ -24,6 +24,10 @@ import Settings from './pages/Settings/Settings';
 import Users from './pages/Users/Users';
 import Analytics from './pages/Analytics/Analytics';
 
+// Sales Pages
+import ProductManager from './pages/Sales/ProductManager';
+import ScriptEditor from './pages/Sales/ScriptEditor';
+
 // Styles
 import './index.css';
 
@@ -51,6 +55,8 @@ function App() {
                 <Route path="calls" element={<CallLogs />} />
                 <Route path="live-calls" element={<LiveCalls />} />
                 <Route path="analytics" element={<Analytics />} />
+                <Route path="sales/products" element={<ProductManager />} />
+                <Route path="sales/scripts" element={<ScriptEditor />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="users" element={<Users />} />
               </Route>

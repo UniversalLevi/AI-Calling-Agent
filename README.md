@@ -1,10 +1,10 @@
-# 🤖 Sara - AI Calling Bot | Hindi & English Voice Assistant
+# 🤖 Sara - AI Sales Calling Bot | Hindi & English Voice Assistant
 
-Meet **Sara**, your intelligent AI voice assistant that can make and receive phone calls with native support for **Hindi, English, and Hinglish** (mixed language) conversations. Sara is designed to be a helpful, professional, and respectful female AI assistant.
+Meet **Sara**, your intelligent AI sales assistant that can make and receive phone calls with native support for **Hindi, English, and Hinglish** (mixed language) conversations. Sara is designed to be a professional sales representative with advanced selling techniques, analytics, and management capabilities.
 
-## 🌟 Features
+## 🌟 Core Features
 
-- **👩 Sara's Voice** - Professional female AI assistant with consistent voice across all languages
+- **👩 Sara's Voice** - Professional female AI sales assistant with consistent voice across all languages
 - **📞 Real Phone Calls** - Make and receive actual phone calls via Twilio
 - **🌐 Multilingual Support** - Hindi, English, and mixed language conversations
 - **🧠 AI-Powered** - Uses OpenAI GPT-4o-mini for intelligent responses
@@ -16,16 +16,58 @@ Meet **Sara**, your intelligent AI voice assistant that can make and receive pho
 - **🧹 Auto Cleanup** - Automatic audio file cleanup to save space
 - **🎯 One-Click Setup** - Single command to start everything
 
+## 🚀 Sales AI Features
+
+- **💼 Sales Mode** - Transform Sara into a professional sales representative
+- **📊 SPIN Selling** - Systematic qualification using Situation, Problem, Implication, Need-payoff questions
+- **🤝 Consultative Approach** - Build trust and rapport with empathy-driven conversations
+- **🎯 Challenger Techniques** - Teach value, tailor solutions, and take control of conversations
+- **📈 BANT Qualification** - Automatic lead scoring based on Budget, Authority, Need, Timeline
+- **🛡️ Objection Handling** - Pre-configured responses to common sales objections
+- **📊 Real-time Analytics** - Track sentiment, talk-listen ratio, conversion stages, and keywords
+- **🎛️ Admin Dashboard** - Manage products, scripts, objections, and sales techniques
+- **🔄 A/B Testing** - Test different approaches and automatically select winners
+- **📱 Multi-Product Support** - Sell hotels, insurance, SaaS, real estate, and more
+
 ## 👩 About Sara
 
-Sara is designed to be your helpful AI assistant with the following characteristics:
+Sara is designed to be your professional AI sales assistant with the following characteristics:
 
-- **Professional & Respectful**: Always maintains a professional tone and handles inappropriate content gracefully
-- **Multilingual**: Fluent in Hindi, English, and Hinglish with natural language switching
+- **Professional Sales Representative**: Uses proven sales techniques (SPIN, Consultative, Challenger)
+- **Multilingual Sales Expert**: Fluent in Hindi, English, and Hinglish with natural language switching
 - **Consistent Voice**: Uses OpenAI's Nova voice (female) across all languages for consistency
-- **Smart Content Filtering**: Automatically detects and responds appropriately to inappropriate content
-- **Fast Response**: Optimized for real-time conversations with quick interruption detection
+- **Smart Objection Handling**: Automatically detects and responds to sales objections professionally
+- **Fast Response**: Optimized for real-time sales conversations with quick interruption detection
+- **Analytics-Driven**: Tracks conversion metrics, sentiment, and sales performance in real-time
 - **Memory Efficient**: Automatically cleans up audio files to save storage space
+
+## 💼 Sales AI System Overview
+
+Sara's Sales AI system transforms the basic calling bot into a sophisticated sales machine:
+
+### 🎯 Sales Techniques
+- **SPIN Selling**: Systematic qualification using Situation, Problem, Implication, Need-payoff questions
+- **Consultative Selling**: Build trust through empathy, active listening, and understanding customer needs
+- **Challenger Selling**: Teach customers new insights, tailor solutions, and take control of conversations
+
+### 📊 Lead Qualification (BANT)
+- **Budget**: Assess customer's financial capacity
+- **Authority**: Identify decision-makers
+- **Need**: Understand customer pain points and requirements
+- **Timeline**: Determine urgency and buying timeline
+
+### 🛡️ Objection Handling
+Pre-configured responses for common objections:
+- "Too expensive" → Value demonstration and ROI calculation
+- "Need to think" → Urgency creation and risk mitigation
+- "Already have a solution" → Competitive differentiation
+- "Not interested" → Pain point discovery and need creation
+
+### 📈 Real-time Analytics
+- **Sentiment Analysis**: Track customer mood and engagement
+- **Talk-Listen Ratio**: Optimize conversation balance (target: 40% AI, 60% customer)
+- **Conversion Funnel**: Track progression through sales stages
+- **Keyword Success Mapping**: Identify phrases that lead to conversions
 
 ## 🚀 Quick Start
 
@@ -69,12 +111,45 @@ GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
 
 # Optional - Gemini AI (alternative to OpenAI)
 GEMINI_API_KEY=your_gemini_api_key
+
+# Sales AI Configuration
+SALES_MODE_ENABLED=true
+ACTIVE_PRODUCT_ID=your_product_id_here
+SALES_API_URL=http://localhost:5000
+QUALIFICATION_THRESHOLD=20
+SENTIMENT_ANALYSIS_ENABLED=true
+TALK_LISTEN_TARGET_RATIO=0.4
+SALES_CACHE_DURATION=300
+
+# Dashboard Integration
+DASHBOARD_API_URL=http://localhost:5000
+DASHBOARD_API_KEY=your_dashboard_api_key
 ```
 
 ### 4. Install ngrok
 Download and install [ngrok](https://ngrok.com/) for webhook tunneling.
 
-### 5. Run the Bot
+### 5. Set Up Sales AI (Optional)
+To enable Sales AI features:
+
+1. **Start the Dashboard**:
+   ```bash
+   cd sara-dashboard
+   npm install
+   npm start
+   ```
+
+2. **Add a Product**:
+   - Go to http://localhost:5000
+   - Navigate to Sales → Products
+   - Add your product with features, pricing, and FAQs
+
+3. **Configure Sales Scripts**:
+   - Go to Sales → Scripts
+   - Create SPIN questions and sales scripts
+   - Set up objection handlers
+
+### 6. Run the Bot
 ```bash
 python main.py
 ```
@@ -84,6 +159,7 @@ That's it! The bot will:
 - Start the audio server
 - Launch ngrok tunnel
 - Show you a menu to make calls
+- Use Sales AI if enabled and configured
 
 ## 📞 Usage Examples
 
@@ -92,7 +168,13 @@ That's it! The bot will:
 2. Choose option 1 to call any number
 3. Choose option 2 to call yourself (for testing)
 
-### Conversation Examples
+### Sales Conversation Examples
+- **Sales Greeting**: "Namaste! Main Sara hun aur main aapko hotel booking service ke baare mein batana chahti hun. Kya aap interested hain?"
+- **SPIN Qualification**: "Aap currently kahan se hotel book karte hain? Koi challenges face karte hain?"
+- **Objection Handling**: "Samajh gaya, price ka concern hai. Lekin aapko pata hai ki hum guaranteed lowest price dete hain?"
+- **Closing**: "Perfect! Toh main aapke liye booking confirm kar dun?"
+
+### Regular Conversation Examples
 - **Hindi**: "नमस्ते, मुझे restaurant booking चाहिए"
 - **English**: "Hello, I need help with hotel reservation"
 - **Hinglish**: "Namaste, booking chahiye please"
@@ -102,9 +184,19 @@ That's it! The bot will:
 ### Core Components
 - **main.py** - Complete launcher and server (the only file you need to run)
 - **src/mixed_ai_brain.py** - AI brain with language-aware responses
+- **src/sales_ai_brain.py** - Sales AI brain with SPIN/Consultative/Challenger techniques
+- **src/sales_context_manager.py** - Manages sales conversation state and BANT tracking
+- **src/sales_analytics_tracker.py** - Real-time sales analytics and performance tracking
 - **src/mixed_stt.py** - Speech-to-text with Hindi/English support
 - **src/enhanced_hindi_tts.py** - High-quality Hindi text-to-speech
 - **src/language_detector.py** - Smart language detection including Hinglish
+
+### Sales AI Components
+- **sara-dashboard/backend/models/** - MongoDB models for products, scripts, objections, analytics
+- **sara-dashboard/backend/controllers/** - API controllers for sales management
+- **sara-dashboard/backend/routes/** - REST API routes for sales and analytics
+- **sara-dashboard/frontend/src/pages/Sales/** - Admin interface for sales management
+- **sara-dashboard/frontend/src/pages/Analytics/** - Sales performance dashboards
 
 ### Workflow
 ```
@@ -112,9 +204,11 @@ Phone Call → Twilio → ngrok → Voice Bot Server
     ↓
 Speech Input → STT (Faster-Whisper) → Language Detection
     ↓
-AI Processing (OpenAI GPT-4o-mini) → Response Generation
+Sales AI Processing (SPIN/Consultative/Challenger) → Response Generation
     ↓
-TTS (Azure/Google/ElevenLabs/gTTS) → Audio Response → Twilio → Phone
+TTS (OpenAI Nova Voice) → Audio Response → Twilio → Phone
+    ↓
+Analytics Tracking → Dashboard → Performance Insights
 ```
 
 ## 🎯 Language Detection
@@ -142,22 +236,41 @@ ai-calling-bot/
 ├── requirements.txt           # Python dependencies
 ├── .env                      # Environment variables (create this)
 ├── .gitignore               # Git ignore file
+├── SALES_AI_IMPLEMENTATION_COMPLETE.md # Sales AI documentation
 ├── asterisk/                # SIP configuration (optional)
 │   ├── extensions.conf
 │   └── sip.conf
-└── src/                     # Core modules
-    ├── config.py           # Configuration settings
-    ├── mixed_ai_brain.py   # AI brain with language support
-    ├── mixed_stt.py        # Speech-to-text engine
-    ├── enhanced_hindi_tts.py # High-quality Hindi TTS
-    ├── mixed_tts.py        # Mixed language TTS
-    ├── language_detector.py # Language detection
-    ├── sip_client.py       # SIP client (optional)
-    ├── sip_voice_bot.py    # SIP voice bot (optional)
-    ├── twilio_client.py    # Twilio integration
-    ├── voice_bot.py        # Local voice bot
-    └── tools/
-        └── list_devices.py # Audio device listing
+├── src/                     # Core modules
+│   ├── config.py           # Configuration settings
+│   ├── mixed_ai_brain.py   # AI brain with language support
+│   ├── sales_ai_brain.py   # Sales AI brain with SPIN/Consultative/Challenger
+│   ├── sales_context_manager.py # Sales conversation state management
+│   ├── sales_analytics_tracker.py # Real-time sales analytics
+│   ├── sales_config.json   # Sales configuration cache
+│   ├── mixed_stt.py        # Speech-to-text engine
+│   ├── enhanced_hindi_tts.py # High-quality Hindi TTS
+│   ├── mixed_tts.py        # Mixed language TTS
+│   ├── language_detector.py # Language detection
+│   ├── conversation_memory.py # Conversation memory system
+│   ├── humanizer.py        # Human-like response enhancement
+│   ├── tts_cache.py        # TTS caching system
+│   ├── sip_client.py       # SIP client (optional)
+│   ├── sip_voice_bot.py    # SIP voice bot (optional)
+│   ├── twilio_client.py    # Twilio integration
+│   ├── voice_bot.py        # Local voice bot
+│   └── tools/
+│       └── list_devices.py # Audio device listing
+└── sara-dashboard/         # Sales AI Dashboard
+    ├── backend/            # Node.js/Express backend
+    │   ├── models/        # MongoDB models
+    │   ├── controllers/   # API controllers
+    │   ├── routes/        # API routes
+    │   └── scripts/       # Database seed scripts
+    └── frontend/          # React frontend
+        └── src/
+            ├── pages/Sales/    # Sales management pages
+            ├── pages/Analytics/ # Analytics dashboards
+            └── components/     # Reusable components
 ```
 
 ## ⚙️ Configuration Options
@@ -170,11 +283,15 @@ RECORD_SECONDS=7.0          # Recording duration
 WHISPER_MODEL_SIZE=base     # Whisper model (tiny/small/base/medium/large)
 ```
 
-### Language Settings
+### Sales AI Settings
 ```env
-LANGUAGE=en                 # Default language
-AUTO_DETECT_LANGUAGE=true   # Enable auto-detection
-DEFAULT_LANGUAGE=en         # Fallback language
+SALES_MODE_ENABLED=true              # Enable sales AI features
+ACTIVE_PRODUCT_ID=product_id         # Current product being sold
+SALES_API_URL=http://localhost:5000  # Dashboard API endpoint
+QUALIFICATION_THRESHOLD=20           # Minimum BANT score to proceed
+SENTIMENT_ANALYSIS_ENABLED=true      # Enable real-time sentiment tracking
+TALK_LISTEN_TARGET_RATIO=0.4         # Target AI talk percentage (40%)
+SALES_CACHE_DURATION=300            # Cache duration in seconds
 ```
 
 ## 🔧 Advanced Setup
@@ -191,12 +308,35 @@ DEFAULT_LANGUAGE=en         # Fallback language
    AZURE_SPEECH_REGION=eastus
    ```
 
-### For Custom Voice (ElevenLabs)
-1. Create a voice at [ElevenLabs](https://elevenlabs.io)
-2. Add to `.env`:
+### For Sales AI Setup
+1. **Start the Dashboard**:
+   ```bash
+   cd sara-dashboard
+   npm install
+   npm start
+   ```
+
+2. **Configure Products**:
+   - Go to http://localhost:5000
+   - Navigate to Sales → Products
+   - Add products with features, pricing, FAQs
+   - Set target audience and competitor comparison
+
+3. **Set Up Sales Scripts**:
+   - Go to Sales → Scripts
+   - Create SPIN questions for qualification
+   - Add consultative phrases for trust building
+   - Configure challenger closing techniques
+
+4. **Configure Objection Handlers**:
+   - Go to Sales → Objection Library
+   - Add responses for common objections
+   - Set success rates and A/B test different responses
+
+5. **Enable Sales Mode**:
    ```env
-   ELEVENLABS_API_KEY=your_key
-   ELEVENLABS_VOICE_ID=your_voice_id
+   SALES_MODE_ENABLED=true
+   ACTIVE_PRODUCT_ID=your_product_id
    ```
 
 ## 🐛 Troubleshooting
@@ -218,10 +358,22 @@ DEFAULT_LANGUAGE=en         # Fallback language
 - Check Twilio account balance
 - Ensure ngrok is running
 
-**"Language detection wrong"**
-- System learns from conversation context
-- Try speaking more clearly
-- Mixed language is detected as intended behavior
+**"Sales AI not working"**
+- Check `SALES_MODE_ENABLED=true` in `.env`
+- Verify `ACTIVE_PRODUCT_ID` is set correctly
+- Ensure dashboard is running on http://localhost:5000
+- Check MongoDB connection in dashboard
+
+**"Dashboard not loading"**
+- Run `npm install` in sara-dashboard directory
+- Check if MongoDB is running
+- Verify port 5000 is not in use
+- Check dashboard logs for errors
+
+**"Product not found"**
+- Add a product via Sales → Products in dashboard
+- Set `ACTIVE_PRODUCT_ID` to the correct product ID
+- Restart the bot after changing product ID
 
 ### Debug Mode
 Set environment variable for detailed logging:

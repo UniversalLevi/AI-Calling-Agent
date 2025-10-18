@@ -144,6 +144,17 @@ AUDIO_COMPRESSION_QUALITY = int(os.getenv("AUDIO_COMPRESSION_QUALITY", "5"))
 
 
 # =============================================================================
+# SALES AI CONFIGURATION
+# =============================================================================
+SALES_MODE_ENABLED = os.getenv("SALES_MODE_ENABLED", "true").lower() == "true"
+ACTIVE_PRODUCT_ID = os.getenv("ACTIVE_PRODUCT_ID", "hotel_booking_service")
+SALES_API_URL = os.getenv("SALES_API_URL", "http://localhost:5000")
+QUALIFICATION_THRESHOLD = int(os.getenv("QUALIFICATION_THRESHOLD", "20"))
+SENTIMENT_ANALYSIS_ENABLED = os.getenv("SENTIMENT_ANALYSIS_ENABLED", "true").lower() == "true"
+TALK_LISTEN_TARGET_RATIO = float(os.getenv("TALK_LISTEN_TARGET_RATIO", "0.4"))
+SALES_CACHE_DURATION = int(os.getenv("SALES_CACHE_DURATION", "300"))  # 5 minutes
+
+# =============================================================================
 # DEVELOPMENT SETTINGS
 # =============================================================================
 DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
@@ -206,6 +217,21 @@ def print_config_summary():
     print(f"SIP Username: {SIP_USERNAME}")
     print(f"Debug Mode: {DEBUG_MODE}")
     print(f"Test Mode: {TEST_MODE}")
+    
+    # Sales configuration
+    if SALES_MODE_ENABLED:
+        print("=" * 60)
+        print("SALES AI CONFIGURATION")
+        print("=" * 60)
+        print(f"Sales Mode: ENABLED")
+        print(f"Active Product ID: {ACTIVE_PRODUCT_ID}")
+        print(f"Sales API URL: {SALES_API_URL}")
+        print(f"Qualification Threshold: {QUALIFICATION_THRESHOLD}")
+        print(f"Sentiment Analysis: {'ENABLED' if SENTIMENT_ANALYSIS_ENABLED else 'DISABLED'}")
+        print(f"Talk-Listen Target Ratio: {TALK_LISTEN_TARGET_RATIO}")
+    else:
+        print("Sales Mode: DISABLED")
+    
     print("=" * 60)
 
 

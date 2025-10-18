@@ -15,6 +15,10 @@ const Sidebar = ({ isOpen, onClose }) => {
     { name: 'Live Calls', href: '/live-calls', icon: '📞' },
     { name: 'Call Logs', href: '/calls', icon: '📚' },
     { name: 'Analytics', href: '/analytics', icon: '📈' },
+    { name: 'Sales', href: '/sales/products', icon: '🎯', submenu: [
+      { name: 'Products', href: '/sales/products', icon: '📦' },
+      { name: 'Scripts', href: '/sales/scripts', icon: '📝' }
+    ]},
     { name: 'Settings', href: '/settings', icon: '⚙️' },
   ];
 
@@ -38,7 +42,44 @@ const Sidebar = ({ isOpen, onClose }) => {
 
           <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
             {navigation.map((item) => {
-              const isActive = location.pathname === item.href;
+              const isActive = location.pathname === item.href || 
+                (item.submenu && item.submenu.some(sub => location.pathname === sub.href));
+              
+              if (item.submenu) {
+                return (
+                  <div key={item.name} className="space-y-1">
+                    <div className={`flex items-center px-4 py-3 text-sm font-medium rounded-md transition-colors ${
+                      isActive
+                        ? 'bg-gray-800 text-white'
+                        : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                    }`}>
+                      <span className="mr-3">{item.icon}</span>
+                      {item.name}
+                    </div>
+                    <div className="ml-4 space-y-1">
+                      {item.submenu.map((subItem) => {
+                        const isSubActive = location.pathname === subItem.href;
+                        return (
+                          <Link
+                            key={subItem.name}
+                            to={subItem.href}
+                            onClick={onClose}
+                            className={`flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                              isSubActive
+                                ? 'bg-gray-700 text-white'
+                                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                            }`}
+                          >
+                            <span className="mr-3">{subItem.icon}</span>
+                            {subItem.name}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              }
+              
               return (
                 <Link
                   key={item.name}

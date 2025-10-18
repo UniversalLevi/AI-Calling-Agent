@@ -16,6 +16,8 @@ require('dotenv').config();
 const callRoutes = require('./routes/callRoutes');
 const userRoutes = require('./routes/userRoutes');
 const systemRoutes = require('./routes/systemRoutes');
+const salesRoutes = require('./routes/salesRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
 
 // Import middleware
 const authMiddleware = require('./middleware/authMiddleware');
@@ -124,6 +126,8 @@ app.set('io', io);
 app.use('/api/calls', callRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/system', systemRoutes);
+app.use('/api/sales', salesRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

@@ -249,6 +249,17 @@ except ImportError as e:
     SIMPLE_INTERRUPTION_AVAILABLE = False
     print(f"⚠️ Simple interruption not available: {e}")
 
+# Import Sales AI system
+try:
+    from src.sales_ai_brain import SalesAIBrain
+    from src.sales_context_manager import SalesContextManager, ConversationStage
+    from src.sales_analytics_tracker import SalesAnalyticsTracker
+    SALES_AI_AVAILABLE = True
+    print("✅ Sales AI system available")
+except ImportError as e:
+    SALES_AI_AVAILABLE = False
+    print(f"⚠️ Sales AI system not available: {e}")
+
 # Import WebSocket Interruption system (advanced)
 try:
     from src.websocket_interruption import start_websocket_interruption_server, WebSocketInterruptionHandler
@@ -268,6 +279,11 @@ ngrok_process = None
 running_services = {}
 realtime_voice_bot = None
 twilio_realtime_integration = None
+
+# Global variables for sales system
+sales_context_managers = {}  # call_id -> SalesContextManager
+sales_analytics_trackers = {}  # call_id -> SalesAnalyticsTracker
+active_sales_brain = None
 
 # =============================================================================
 # AUDIO SERVER (Built-in)
@@ -711,7 +727,7 @@ def create_voice_bot_server():
     
     @bot_app.route('/process_speech_realtime', methods=['POST'])
     def process_speech_realtime():
-        """Enhanced real-time speech processing with interruption handling"""
+        """Enhanced real-time speech processing with sales AI integration"""
         response = VoiceResponse()
         speech_result = request.form.get('SpeechResult', '')
         caller = request.form.get('From', 'Unknown')
@@ -895,11 +911,54 @@ def create_voice_bot_server():
                 bot_app.call_language[call_sid]['partial_speech_count'] = 0
                 bot_app.call_language[call_sid]['interrupted_text'] = ''
         
-        # Check for interrupted text from URL parameter (from redirect)
-        interrupted_text_from_url = request.args.get('interrupted_text', '')
-        if interrupted_text_from_url:
-            print(f"🛑 Processing interrupted speech from URL: {interrupted_text_from_url}")
-            speech_result = interrupted_text_from_url
+        # Sales AI Integration
+        if SALES_AI_AVAILABLE and os.getenv('SALES_MODE_ENABLED', 'true').lower() == 'true':
+            try:
+                # Initialize sales AI brain globally if not exists
+                global active_sales_brain
+                if not active_sales_brain:
+                    try:
+                        product_id = os.getenv('ACTIVE_PRODUCT_ID', 'default')
+                        active_sales_brain = SalesAIBrain(product_id)
+                        print(f"🧠 Sales AI brain initialized for product: {product_id}")
+                    except Exception as e:
+                        print(f"❌ Failed to initialize Sales AI brain: {e}")
+                        active_sales_brain = None
+                
+                # Initialize sales context manager if not exists
+                if call_sid not in sales_context_managers:
+                    product_id = os.getenv('ACTIVE_PRODUCT_ID', 'default')
+                    sales_context_managers[call_sid] = SalesContextManager(call_sid, product_id)
+                    sales_analytics_trackers[call_sid] = SalesAnalyticsTracker(call_sid)
+                    print(f"🎯 Sales context manager initialized for call: {call_sid}")
+                
+                # Get sales context manager and analytics tracker
+                sales_context = sales_context_managers[call_sid]
+                analytics_tracker = sales_analytics_trackers[call_sid]
+                
+                # Analyze user input for sales context
+                user_analysis = sales_context.analyze_user_input(speech_result)
+                
+                # Update conversation stage based on analysis
+                stage_triggers = user_analysis.get('stage_triggers', [])
+                if stage_triggers:
+                    new_stage = ConversationStage(stage_triggers[0])
+                    sales_context.update_stage(new_stage, f"User input analysis: {stage_triggers[0]}")
+                    analytics_tracker.update_conversion_stage(new_stage.value)
+                
+                # Update BANT scores if qualification signals detected
+                bant_signals = user_analysis.get('bant_signals', {})
+                for bant_type, signals in bant_signals.items():
+                    if signals:  # If signals detected, increase score
+                        current_score = sales_context.bant_data[bant_type]['score']
+                        new_score = min(10, current_score + len(signals))
+                        sales_context.update_bant_score(bant_type, new_score, f"Detected signals: {', '.join(signals)}")
+                
+                print(f"📊 Sales Analysis - Stage: {sales_context.current_stage.value}, BANT Score: {sales_context.get_bant_score()}")
+                
+            except Exception as e:
+                print(f"❌ Sales AI integration error: {e}")
+                # Continue with normal processing if sales AI fails
             interruption_detected = False
             interrupted_text = ""
         
@@ -1278,49 +1337,60 @@ def create_voice_bot_server():
                                 else:
                                     return base_prompt + "Respond helpfully and naturally. Keep it brief and focused (max 2 sentences)." + memory_context
                         
-                        # Generate response with memory-aware prompting (optimized for speed)
-                        enhanced_prompt = get_memory_aware_prompt(conversation_stage, detected_language, bot_app.call_language[call_sid])
-                        
-                        # Optimize prompt for faster response with better context
-                        optimized_prompt = f"{enhanced_prompt}\n\nUser: {speech_result}\n\nRespond quickly, concisely, and naturally in the same language as the user:"
-                        
-                        # Use streaming AI for faster response
-                        try:
-                            from src.config import ENABLE_STREAMING_RESPONSES
-                            if ENABLE_STREAMING_RESPONSES and hasattr(bot_app.gpt, 'ask_stream'):
-                                print("🚀 Using streaming AI response...")
-                                bot_response = ""
-                                for chunk in bot_app.gpt.ask_stream(optimized_prompt, detected_language):
-                                    bot_response += chunk
-                                    # Start TTS generation early with partial response (reduced threshold by 40%)
-                                    if len(bot_response) > 30 and len(bot_response.split()) >= 3:
-                                        print(f"⚡ Early TTS trigger: {bot_response[:30]}...")
-                                        break
-                            else:
-                                bot_response = bot_app.gpt.ask(optimized_prompt, detected_language)
-                        except Exception as e:
-                            print(f"⚠️ Streaming failed, falling back to regular: {e}")
-                            bot_response = bot_app.gpt.ask(optimized_prompt, detected_language)
-                        
-                        # Add human-like elements to response
-                        try:
-                            from src.humanizer import enhance_response
-                            from src.config import ENABLE_FILLER_WORDS, FILLER_FREQUENCY
+                        # Use Sales AI Brain if available and enabled, otherwise regular AI brain
+                        if SALES_AI_AVAILABLE and os.getenv('SALES_MODE_ENABLED', 'true').lower() == 'true' and active_sales_brain is not None:
+                            print("🎯 Using Sales AI Brain for response generation")
+                            bot_response = active_sales_brain.ask(speech_result, detected_language)
                             
-                            if ENABLE_FILLER_WORDS:
-                                bot_response = enhance_response(bot_response, detected_language)
-                                print(f"🎭 Enhanced response with human-like elements")
-                        except Exception as e:
-                            print(f"⚠️ Humanizer failed: {e}")
-                        
-                        # Store conversation exchange in memory
-                        try:
-                            from src.conversation_memory import add_conversation_exchange, extract_and_store_info
-                            add_conversation_exchange(call_sid, speech_result, bot_response, detected_language, speech_confidence)
-                            extract_and_store_info(call_sid, speech_result)
-                            print(f"🧠 Stored conversation exchange in memory")
-                        except Exception as e:
-                            print(f"⚠️ Memory storage failed: {e}")
+                            # Track analytics
+                            if call_sid in sales_analytics_trackers:
+                                analytics_tracker = sales_analytics_trackers[call_sid]
+                                analytics_tracker.track_exchange(speech_result, bot_response, detected_language)
+                        else:
+                            print("🔄 Using regular AI brain (Sales AI not available or not initialized)")
+                            # Generate response with memory-aware prompting (optimized for speed)
+                            enhanced_prompt = get_memory_aware_prompt(conversation_stage, detected_language, bot_app.call_language[call_sid])
+                            
+                            # Optimize prompt for faster response with better context
+                            optimized_prompt = f"{enhanced_prompt}\n\nUser: {speech_result}\n\nRespond quickly, concisely, and naturally in the same language as the user:"
+                            
+                            # Use streaming AI for faster response
+                            try:
+                                from src.config import ENABLE_STREAMING_RESPONSES
+                                if ENABLE_STREAMING_RESPONSES and hasattr(bot_app.gpt, 'ask_stream'):
+                                    print("🚀 Using streaming AI response...")
+                                    bot_response = ""
+                                    for chunk in bot_app.gpt.ask_stream(optimized_prompt, detected_language):
+                                        bot_response += chunk
+                                        # Start TTS generation early with partial response (reduced threshold by 40%)
+                                        if len(bot_response) > 30 and len(bot_response.split()) >= 3:
+                                            print(f"⚡ Early TTS trigger: {bot_response[:30]}...")
+                                            break
+                                else:
+                                    bot_response = bot_app.gpt.ask(optimized_prompt, detected_language)
+                            except Exception as e:
+                                print(f"⚠️ Streaming failed, falling back to regular: {e}")
+                                bot_response = bot_app.gpt.ask(optimized_prompt, detected_language)
+                            
+                            # Add human-like elements to response
+                            try:
+                                from src.humanizer import enhance_response
+                                from src.config import ENABLE_FILLER_WORDS, FILLER_FREQUENCY
+                                
+                                if ENABLE_FILLER_WORDS:
+                                    bot_response = enhance_response(bot_response, detected_language)
+                                    print(f"🎭 Enhanced response with human-like elements")
+                            except Exception as e:
+                                print(f"⚠️ Humanizer failed: {e}")
+                            
+                            # Store conversation exchange in memory
+                            try:
+                                from src.conversation_memory import add_conversation_exchange, extract_and_store_info
+                                add_conversation_exchange(call_sid, speech_result, bot_response, detected_language, speech_confidence)
+                                extract_and_store_info(call_sid, speech_result)
+                                print(f"🧠 Stored conversation exchange in memory")
+                            except Exception as e:
+                                print(f"⚠️ Memory storage failed: {e}")
                         
                         # Enforce response length limits based on context
                         def enforce_response_limits(response, stage):
