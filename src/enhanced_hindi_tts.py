@@ -10,21 +10,11 @@ import os
 import tempfile
 import time
 import glob
+import logging
 from pathlib import Path
 from typing import Optional
 import io
 import contextlib
-try:
-    from .debug_logger import logger, log_timing
-except Exception:
-    class _Null:
-        def __getattr__(self, *_):
-            return lambda *a, **k: None
-    logger = _Null()
-    def log_timing(name):
-        def _d(f):
-            return f
-        return _d
 
 # Load environment variables
 try:
@@ -32,6 +22,19 @@ try:
     load_dotenv()
 except ImportError:
     pass
+
+# Import logger and timing decorator
+try:
+    from .debug_logger import logger, log_timing
+except ImportError:
+    # Fallback to standard logging if debug_logger not available
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    def log_timing(func):
+        """Fallback timing decorator"""
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+        return wrapper
 
 try:
     from .language_detector import detect_language
@@ -130,12 +133,9 @@ class EnhancedHindiTTS:
             logger.debug(f"TTS generated via OpenAI model={model} voice={voice} -> {audio_file.name}")
             return audio_file.name
         except Exception as e:
-            print(f"❌ OpenAI TTS error: {e}")
-            try:
-                from .debug_logger import logger
-                logger.error(f"OpenAI TTS error: {type(e).__name__}: {e}")
-            except Exception:
-                pass
+            error_msg = f"OpenAI TTS error: {type(e).__name__}: {e}"
+            print(f"❌ {error_msg}")
+            logger.error(error_msg)
             return None
     
     def _optimize_text_for_tts(self, text: str) -> str:

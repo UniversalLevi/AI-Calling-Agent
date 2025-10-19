@@ -2040,7 +2040,7 @@ def start_media_streams_server():
         return False
 
 def start_voice_bot_server():
-    """Start the voice bot server in a separate thread"""
+    """Start the FastAPI voice bot server in a separate thread"""
     global voice_bot_app
     
     if 'voice_bot_server' in running_services:
@@ -2048,24 +2048,28 @@ def start_voice_bot_server():
         return True
     
     try:
-        voice_bot_app = create_voice_bot_server()
+        print("🚀 Starting FastAPI voice bot server...")
         
-        def run_voice_bot_server():
-            import logging
-            log = logging.getLogger('werkzeug')
-            log.setLevel(logging.ERROR)
-            voice_bot_app.run(host='0.0.0.0', port=8000, debug=False, use_reloader=False)
+        def run_fastapi_server():
+            try:
+                from src.fastapi_server import run
+                run(host='0.0.0.0', port=8000)
+            except Exception as e:
+                print(f"❌ FastAPI server error: {e}")
+                import traceback
+                traceback.print_exc()
         
-        bot_thread = threading.Thread(target=run_voice_bot_server, daemon=True)
+        bot_thread = threading.Thread(target=run_fastapi_server, daemon=True)
         bot_thread.start()
         
         # Wait for server to start
+        print("⏳ Waiting for FastAPI server to start...")
         for i in range(15):
             try:
                 response = requests.get("http://localhost:8000/health", timeout=1)
                 if response.status_code == 200:
                     running_services['voice_bot_server'] = bot_thread
-                    print("✅ Voice bot server started on port 8000!")
+                    print("✅ FastAPI voice bot server started on port 8000!")
                     return True
             except:
                 time.sleep(1)
@@ -2075,6 +2079,8 @@ def start_voice_bot_server():
         
     except Exception as e:
         print(f"❌ Error starting voice bot server: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def start_ngrok():
@@ -2693,7 +2699,7 @@ def main_menu():
         print("-" * 30)
         print("✅ Services Status:")
         print("   🌐 Ngrok: Running")
-        print("   🚀 Flask Servers: Running")
+        print("   🚀 FastAPI Server: Running")
         print("   🎯 System: Ready for calls!")
         print("-" * 30)
         print("1. 📞 Make Smart Call")
