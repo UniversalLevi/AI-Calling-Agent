@@ -1,8 +1,9 @@
 """
-Enhanced Hindi TTS - Better Quality Hindi Speech
-===============================================
+OpenAI-only TTS with language-aware voice selection and fallback
+===============================================================
 
-This module provides high-quality Hindi text-to-speech using multiple providers.
+This module provides high-quality TTS using OpenAI only, with automatic
+voice selection for English/Hindi and a fallback voice.
 """
 
 import os
@@ -11,6 +12,19 @@ import time
 import glob
 from pathlib import Path
 from typing import Optional
+import io
+import contextlib
+try:
+    from .debug_logger import logger, log_timing
+except Exception:
+    class _Null:
+        def __getattr__(self, *_):
+            return lambda *a, **k: None
+    logger = _Null()
+    def log_timing(name):
+        def _d(f):
+            return f
+        return _d
 
 # Load environment variables
 try:
@@ -26,49 +40,12 @@ except ImportError:
 
 
 class EnhancedHindiTTS:
-    """Enhanced Hindi TTS with multiple provider support"""
+    """OpenAI-only TTS with language-aware voice selection and fallback"""
     
     def __init__(self):
-        self.providers = []
-        self._initialize_providers()
         self._cleanup_old_audio_files()
     
-    def _initialize_providers(self):
-        """Initialize available TTS providers based on .env configuration"""
-        
-        # Get preferred TTS provider from .env
-        preferred_provider = os.getenv('TTS_PROVIDER', 'openai').lower()
-        print(f"🎯 Preferred TTS provider from .env: {preferred_provider}")
-        
-        # Add preferred provider first if available
-        if preferred_provider == 'azure' and self._check_azure_credentials():
-            self.providers.append('azure')
-            print("🔊 Azure TTS available (Preferred)")
-        elif preferred_provider == 'google' and self._check_google_credentials():
-            self.providers.append('google')
-            print("🔊 Google Cloud TTS available (Preferred)")
-        elif preferred_provider == 'openai' and self._check_openai_credentials():
-            self.providers.append('openai')
-            print("🔊 OpenAI TTS available (Preferred)")
-        
-        # Add other available providers as fallbacks
-        if 'azure' not in self.providers and self._check_azure_credentials():
-            self.providers.append('azure')
-            print("🔊 Azure TTS available (Fallback)")
-        
-        if 'google' not in self.providers and self._check_google_credentials():
-            self.providers.append('google')
-            print("🔊 Google Cloud TTS available (Fallback)")
-        
-        if 'openai' not in self.providers and self._check_openai_credentials():
-            self.providers.append('openai')
-            print("🔊 OpenAI TTS available (Fallback)")
-        
-        # Always have gTTS as final fallback
-        self.providers.append('gtts')
-        print("🔊 gTTS available (Final Fallback)")
-        
-        print(f"🎤 Hindi TTS providers available: {len(self.providers)}")
+    # OpenAI-only, so no multi-provider initialization
     
     def _cleanup_old_audio_files(self):
         """Clean up old audio files to save space"""
@@ -93,136 +70,72 @@ class EnhancedHindiTTS:
         except Exception as e:
             print(f"⚠️ Audio cleanup error: {e}")
     
-    def _check_azure_credentials(self) -> bool:
-        """Check if Azure credentials are available"""
-        return bool(os.getenv('AZURE_SPEECH_KEY') and os.getenv('AZURE_SPEECH_REGION'))
-    
-    def _check_google_credentials(self) -> bool:
-        """Check if Google Cloud credentials are available"""
-        return bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS') or os.getenv('GOOGLE_CLOUD_TTS_KEY'))
-    
     def _check_openai_credentials(self) -> bool:
-        """Check if OpenAI credentials are available"""
         return bool(os.getenv('OPENAI_API_KEY'))
     
-    def speak_hindi_azure(self, text: str) -> Optional[str]:
-        """Generate Hindi speech using Azure Cognitive Services"""
-        try:
-            import azure.cognitiveservices.speech as speechsdk
-            
-            speech_key = os.getenv('AZURE_SPEECH_KEY')
-            service_region = os.getenv('AZURE_SPEECH_REGION')
-            
-            speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=service_region)
-            
-            # Use high-quality Hindi voice
-            speech_config.speech_synthesis_voice_name = "hi-IN-SwaraNeural"  # Female voice
-            # Alternative: "hi-IN-MadhurNeural" (Male voice)
-            
-            # Create audio file
-            audio_dir = Path("audio_files")
-            audio_dir.mkdir(exist_ok=True)
-            timestamp = int(time.time() * 1000)
-            audio_file = audio_dir / f"azure_hindi_{timestamp}.wav"
-            
-            audio_config = speechsdk.audio.AudioOutputConfig(filename=str(audio_file))
-            synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
-            
-            result = synthesizer.speak_text_async(text).get()
-            
-            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-                print(f"🎵 Azure Hindi TTS: {audio_file.name}")
-                # Return just the filename; the controller will build a public URL
-                return audio_file.name
-            else:
-                print(f"❌ Azure TTS failed: {result.reason}")
-                return None
-                
-        except Exception as e:
-            print(f"❌ Azure TTS error: {e}")
-            return None
+    # Removed: Azure/Google/gTTS providers (OpenAI-only)
     
-    def speak_hindi_google(self, text: str) -> Optional[str]:
-        """Generate Hindi speech using Google Cloud TTS"""
-        try:
-            from google.cloud import texttospeech
-            
-            client = texttospeech.TextToSpeechClient()
-            
-            synthesis_input = texttospeech.SynthesisInput(text=text)
-            
-            # High-quality Hindi voice
-            voice = texttospeech.VoiceSelectionParams(
-                language_code="hi-IN",
-                name="hi-IN-Wavenet-A",  # High-quality WaveNet voice
-                ssml_gender=texttospeech.SsmlVoiceGender.FEMALE
-            )
-            
-            audio_config = texttospeech.AudioConfig(
-                audio_encoding=texttospeech.AudioEncoding.MP3
-            )
-            
-            response = client.synthesize_speech(
-                input=synthesis_input, voice=voice, audio_config=audio_config
-            )
-            
-            # Save audio file
-            audio_dir = Path("audio_files")
-            audio_dir.mkdir(exist_ok=True)
-            timestamp = int(time.time() * 1000)
-            audio_file = audio_dir / f"google_hindi_{timestamp}.mp3"
-            
-            with open(audio_file, "wb") as out:
-                out.write(response.audio_content)
-            
-            print(f"🎵 Google Hindi TTS: {audio_file.name}")
-            # Return just the filename; the controller will build a public URL
-            return audio_file.name
-            
-        except Exception as e:
-            print(f"❌ Google TTS error: {e}")
-            return None
+    # Removed: Google TTS
     
-    def speak_hindi_openai(self, text: str) -> Optional[str]:
-        """Generate speech using OpenAI TTS with Sara's female voice"""
+    def _select_openai_voice(self, text: str) -> str:
+        from .language_detector import detect_language
+        lang = detect_language(text)
         try:
-            import openai
-            
+            from .config import OPENAI_TTS_VOICE_ENGLISH, OPENAI_TTS_VOICE_HINDI, OPENAI_TTS_VOICE_FALLBACK
+        except Exception:
+            OPENAI_TTS_VOICE_ENGLISH = os.getenv('OPENAI_TTS_VOICE_ENGLISH', 'nova')
+            OPENAI_TTS_VOICE_HINDI = os.getenv('OPENAI_TTS_VOICE_HINDI', 'shimmer')
+            OPENAI_TTS_VOICE_FALLBACK = os.getenv('OPENAI_TTS_VOICE_FALLBACK', 'alloy')
+        # Allow dashboard override
+        try:
+            from .dashboard_integration import sales_dashboard
+            settings = sales_dashboard.get_voice_settings()
+            OPENAI_TTS_VOICE_ENGLISH = settings.get('tts_voice_english', OPENAI_TTS_VOICE_ENGLISH)
+            OPENAI_TTS_VOICE_HINDI = settings.get('tts_voice_hindi', OPENAI_TTS_VOICE_HINDI)
+        except Exception:
+            pass
+        if lang == 'hi':
+            return OPENAI_TTS_VOICE_HINDI or OPENAI_TTS_VOICE_FALLBACK
+        elif lang == 'mixed':
+            return OPENAI_TTS_VOICE_ENGLISH or OPENAI_TTS_VOICE_FALLBACK
+        return OPENAI_TTS_VOICE_ENGLISH or OPENAI_TTS_VOICE_FALLBACK
+
+    @log_timing("TTS generation (OpenAI)")
+    def speak_openai(self, text: str) -> Optional[str]:
+        try:
+            from openai import OpenAI
             api_key = os.getenv('OPENAI_API_KEY')
-            model = os.getenv('OPENAI_TTS_MODEL', 'tts-1')  # Fastest model for speed
-            
-            # Use female voice for Sara with master branch settings
-            voice = os.getenv('OPENAI_TTS_VOICE', 'nova')  # Nova is a female voice
-            
-            client = openai.OpenAI(api_key=api_key)
-            
-            # Create audio file
+            model = os.getenv('OPENAI_TTS_MODEL', 'tts-1')
+            voice = self._select_openai_voice(text)
+            client = OpenAI(api_key=api_key)
+
             audio_dir = Path("audio_files")
             audio_dir.mkdir(exist_ok=True)
             timestamp = int(time.time() * 1000)
             audio_file = audio_dir / f"sara_voice_{timestamp}.mp3"
-            
-            # Optimize text for better Hinglish pronunciation
+
             optimized_text = self._optimize_text_for_tts(text)
-            
-            # Generate speech with master branch settings for natural speech
+
+            # Generate MP3 bytes
             response = client.audio.speech.create(
                 model=model,
                 voice=voice,
                 input=optimized_text,
-                speed=1.0,  # Normal speed for natural speech (master branch setting)
                 response_format="mp3"
             )
-            
-            # Save audio file
+
             with open(audio_file, 'wb') as f:
                 f.write(response.content)
-            
-            print(f"🎵 Sara's Voice (OpenAI): {audio_file.name}")
+
+            logger.debug(f"TTS generated via OpenAI model={model} voice={voice} -> {audio_file.name}")
             return audio_file.name
-            
         except Exception as e:
             print(f"❌ OpenAI TTS error: {e}")
+            try:
+                from .debug_logger import logger
+                logger.error(f"OpenAI TTS error: {type(e).__name__}: {e}")
+            except Exception:
+                pass
             return None
     
     def _optimize_text_for_tts(self, text: str) -> str:
@@ -492,27 +405,7 @@ class EnhancedHindiTTS:
         
         return text.strip()
     
-    def speak_hindi_gtts(self, text: str) -> Optional[str]:
-        """Generate Hindi speech using gTTS (fallback)"""
-        try:
-            from gtts import gTTS
-            
-            # Create audio file
-            audio_dir = Path("audio_files")
-            audio_dir.mkdir(exist_ok=True)
-            timestamp = int(time.time() * 1000)
-            audio_file = audio_dir / f"gtts_hindi_{timestamp}.mp3"
-            
-            tts = gTTS(text=text, lang='hi', slow=False)
-            tts.save(str(audio_file))
-            
-            print(f"🎵 gTTS Hindi TTS: {audio_file.name}")
-            # Return just the filename; the controller will build a public URL
-            return audio_file.name
-            
-        except Exception as e:
-            print(f"❌ gTTS error: {e}")
-            return None
+    # Removed: gTTS fallback
     
     def speak_enhanced_hindi(self, text: str) -> str:
         """
@@ -542,57 +435,21 @@ class EnhancedHindiTTS:
         # Detect if text contains Hindi characters
         has_hindi = any('\u0900' <= char <= '\u097F' for char in text)
         
-        # For Hindi/mixed content, prioritize Hindi-optimized providers
-        if has_hindi:
-            print("🔍 Hindi content detected - prioritizing Hindi-optimized providers")
-            # Reorder providers for Hindi content: Azure > Google > OpenAI > gTTS
-            hindi_optimized_providers = []
-            for provider in ['azure', 'google', 'openai', 'gtts']:
-                if provider in self.providers:
-                    hindi_optimized_providers.append(provider)
-        else:
-            print("🔍 English content detected - using preferred provider")
-            # For English content, use the preferred provider order
-            hindi_optimized_providers = self.providers
-        
-        # Try providers in optimized order
-        for provider in hindi_optimized_providers:
+        # OpenAI-only path
+        result = self.speak_openai(text)
+        if result:
             try:
-                if provider == 'azure':
-                    result = self.speak_hindi_azure(text)
-                elif provider == 'google':
-                    result = self.speak_hindi_google(text)
-                elif provider == 'openai':
-                    result = self.speak_hindi_openai(text)
-                elif provider == 'gtts':
-                    result = self.speak_hindi_gtts(text)
-                else:
-                    continue
-                
-                if result:
-                    print(f"✅ Enhanced Hindi TTS successful with {provider}")
-                    
-                    # Cache the result for future use
-                    try:
-                        from .tts_cache import get_tts_cache
-                        cache = get_tts_cache()
-                        # Get absolute path to the audio file
-                        audio_dir = os.path.join(os.path.dirname(__file__), '..', 'audio_files')
-                        abs_result = os.path.join(audio_dir, os.path.basename(result))
-                        if os.path.exists(abs_result):
-                            cache.cache_audio(text, "hi", "nova", abs_result)
-                    except ImportError:
-                        pass
-                    
-                    # Clean up old files after successful generation
-                    self._cleanup_old_audio_files()
-                    return result
-                    
-            except Exception as e:
-                print(f"❌ {provider} failed: {e}")
-                continue
-        
-        print("❌ All Hindi TTS providers failed, returning text")
+                from .tts_cache import get_tts_cache
+                cache = get_tts_cache()
+                audio_dir = os.path.join(os.path.dirname(__file__), '..', 'audio_files')
+                abs_result = os.path.join(audio_dir, os.path.basename(result))
+                if os.path.exists(abs_result):
+                    cache.cache_audio(text, "hi", "nova", abs_result)
+            except ImportError:
+                pass
+            self._cleanup_old_audio_files()
+            return result
+        print("❌ OpenAI TTS failed, returning text")
         return text
     
     def speak_mixed_language(self, text: str) -> str:
@@ -613,7 +470,7 @@ class EnhancedHindiTTS:
             # For mixed text, use the best available provider
             return self.speak_enhanced_hindi(text)
         else:
-            # For English, also use enhanced TTS
+            # For English, also use OpenAI
             return self.speak_enhanced_hindi(text)
     
     def speak_enhanced_hindi_bytes(self, text: str) -> bytes:

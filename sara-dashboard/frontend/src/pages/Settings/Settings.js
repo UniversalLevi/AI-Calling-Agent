@@ -2,11 +2,25 @@
  * Settings Page
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 
 const Settings = () => {
   const { user } = useAuth();
+  const [voiceSettings, setVoiceSettings] = useState({ tts_voice_english: 'nova', tts_voice_hindi: 'shimmer', tts_language_preference: 'auto' });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/system/voice-settings');
+        const data = await res.json();
+        if (data.success) setVoiceSettings(data.data);
+      } catch (e) {
+        // noop
+      }
+    })();
+  }, []);
 
   return (
     <div className="fade-in">
@@ -37,12 +51,70 @@ const Settings = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Voice Type
+                OpenAI English Voice
               </label>
-              <select className="input-field">
-                <option value="openai">OpenAI TTS</option>
-                <option value="twilio">Twilio Voice</option>
+              <select
+                className="input-field"
+                value={voiceSettings.tts_voice_english}
+                onChange={(e) => setVoiceSettings({ ...voiceSettings, tts_voice_english: e.target.value })}
+              >
+                <option value="nova">nova</option>
+                <option value="alloy">alloy</option>
+                <option value="echo">echo</option>
+                <option value="fable">fable</option>
+                <option value="onyx">onyx</option>
+                <option value="shimmer">shimmer</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                OpenAI Hindi Voice
+              </label>
+              <select
+                className="input-field"
+                value={voiceSettings.tts_voice_hindi}
+                onChange={(e) => setVoiceSettings({ ...voiceSettings, tts_voice_hindi: e.target.value })}
+              >
+                <option value="shimmer">shimmer</option>
+                <option value="nova">nova</option>
+                <option value="alloy">alloy</option>
+                <option value="echo">echo</option>
+                <option value="fable">fable</option>
+                <option value="onyx">onyx</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Language Preference
+              </label>
+              <select
+                className="input-field"
+                value={voiceSettings.tts_language_preference}
+                onChange={(e) => setVoiceSettings({ ...voiceSettings, tts_language_preference: e.target.value })}
+              >
+                <option value="auto">Auto</option>
+                <option value="en">English</option>
+                <option value="hi">Hindi</option>
+              </select>
+            </div>
+            <div>
+              <button
+                onClick={async () => {
+                  setSaving(true);
+                  try {
+                    await fetch('/api/system/voice-settings', {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(voiceSettings)
+                    });
+                  } catch (e) {}
+                  setSaving(false);
+                }}
+                className="btn-primary"
+                disabled={saving}
+              >
+                {saving ? 'Saving...' : 'Save Voice Settings'}
+              </button>
             </div>
           </div>
         </div>

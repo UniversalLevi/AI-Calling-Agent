@@ -8,6 +8,17 @@ This module provides AI conversation capabilities for mixed Hindi-English conver
 import os
 from typing import Optional
 from abc import ABC, abstractmethod
+try:
+    from .debug_logger import logger, log_timing
+except Exception:
+    class _Null:
+        def __getattr__(self, *_):
+            return lambda *a, **k: None
+    logger = _Null()
+    def log_timing(name):
+        def _d(f):
+            return f
+        return _d
 
 # Load environment variables
 try:
@@ -55,6 +66,7 @@ class MixedOpenAIProvider(MixedAIProvider):
         self.history = []
         print(f"🧠 Mixed OpenAI Provider initialized with {model}")
     
+    @log_timing("AI response (OpenAI)")
     def ask(self, user_text: str, language: str = None) -> str:
         """Process user input with OpenAI and respond in appropriate language"""
         # Detect language if not specified
@@ -93,7 +105,11 @@ class MixedOpenAIProvider(MixedAIProvider):
             return reply.strip()
             
         except Exception as e:
-            print(f"❌ OpenAI error: {e}")
+            try:
+                from .debug_logger import logger
+                logger.error(f"OpenAI chat error: {type(e).__name__}: {e}")
+            except Exception:
+                pass
             return get_fallback_message(language)
     
     def ask_stream(self, user_text: str, language: str = None):

@@ -340,3 +340,40 @@ module.exports = {
   exportConfigs,
   importConfigs
 };
+
+// Voice settings specific endpoints (backend-first)
+// Names used: tts_voice_english, tts_voice_hindi, tts_language_preference
+
+// @desc    Get voice settings
+// @route   GET /api/system/voice-settings
+// @access  Private
+module.exports.getVoiceSettings = asyncHandler(async (req, res) => {
+  const keys = ['tts_voice_english', 'tts_voice_hindi', 'tts_language_preference'];
+  const configs = await SystemConfig.find({ name: { $in: keys }, isActive: true });
+  const map = Object.fromEntries(configs.map(c => [c.name, c.value]));
+  res.json({ success: true, data: {
+    tts_voice_english: map.tts_voice_english || 'nova',
+    tts_voice_hindi: map.tts_voice_hindi || 'shimmer',
+    tts_language_preference: map.tts_language_preference || 'auto'
+  }});
+});
+
+// @desc    Update voice settings
+// @route   PUT /api/system/voice-settings
+// @access  Private (Admin)
+module.exports.updateVoiceSettings = asyncHandler(async (req, res) => {
+  const { tts_voice_english, tts_voice_hindi, tts_language_preference } = req.body || {};
+  const updates = [];
+  const userId = req.user?._id;
+
+  const setConfig = async (name, value) => {
+    const c = await SystemConfig.updateConfig(name, value, userId);
+    updates.push(c);
+  };
+
+  if (tts_voice_english) await setConfig('tts_voice_english', tts_voice_english);
+  if (tts_voice_hindi) await setConfig('tts_voice_hindi', tts_voice_hindi);
+  if (tts_language_preference) await setConfig('tts_language_preference', tts_language_preference);
+
+  res.json({ success: true, message: 'Voice settings updated', data: updates });
+});

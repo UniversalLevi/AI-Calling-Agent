@@ -34,6 +34,12 @@ class SalesDashboardIntegration:
         self.cache_timestamps = {}
         
         print(f"🔗 Sales Dashboard Integration initialized: {self.dashboard_url}")
+        # Optional: subscribe to websocket updates for instant voice settings
+        try:
+            if websocket_client:
+                websocket_client.subscribe('system:voice-settings', self._on_voice_settings_update)
+        except Exception:
+            pass
     
     def _is_cache_valid(self, key: str) -> bool:
         """Check if cached data is still valid"""
@@ -53,6 +59,32 @@ class SalesDashboardIntegration:
         """Cache data with timestamp"""
         self.cache[key] = data
         self.cache_timestamps[key] = time.time()
+
+    def _on_voice_settings_update(self, data: Any):
+        try:
+            # Invalidate voice cache so next call fetches fresh values
+            if 'voice_settings' in self.cache:
+                del self.cache['voice_settings']
+                del self.cache_timestamps['voice_settings']
+        except Exception:
+            pass
+
+    def get_voice_settings(self) -> Dict:
+        """Fetch TTS voice settings from dashboard with simple caching."""
+        cache_key = "voice_settings"
+        cached = self._get_cached_data(cache_key)
+        if cached:
+            return cached
+        try:
+            response = requests.get(f"{self.dashboard_url}/api/system/voice-settings", timeout=self.api_timeout)
+            if response.status_code == 200:
+                data = response.json().get('data', {})
+                self._cache_data(cache_key, data)
+                return data
+        except Exception as e:
+            print(f"❌ Error fetching voice settings: {e}")
+        # Defaults
+        return {"tts_voice_english": "nova", "tts_voice_hindi": "shimmer", "tts_language_preference": "auto"}
     
     def get_active_campaign(self, product_id: str) -> Optional[Dict]:
         """Get active sales campaign configuration"""

@@ -11,6 +11,8 @@ const {
   createProduct,
   updateProduct,
   deleteProduct,
+  setActiveProduct,
+  getActiveProduct,
   getSalesScripts,
   createSalesScript,
   updateSalesScript,
@@ -29,6 +31,8 @@ router.get('/products/:id', getProduct);
 router.post('/products', createProduct);
 router.put('/products/:id', updateProduct);
 router.delete('/products/:id', deleteProduct);
+router.patch('/products/:id/activate', setActiveProduct);
+router.get('/products/active', getActiveProduct);
 
 // Sales Script Management Routes
 router.get('/scripts', getSalesScripts);

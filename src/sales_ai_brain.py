@@ -37,7 +37,16 @@ class SalesAIBrain(MixedAIBrain):
         self.key_phrases = []
         self.call_start_time = time.time()
         
-        # Load sales configuration
+        # Resolve active product if not provided
+        if not self.product_id:
+            try:
+                dashboard_url = os.getenv('SALES_API_URL', 'http://localhost:5000')
+                r = requests.get(f"{dashboard_url}/api/sales/products/active")
+                if r.status_code == 200 and r.json().get('data'):
+                    self.product_id = r.json()['data']['_id']
+            except Exception:
+                pass
+        # Load sales configuration now
         self._load_sales_config()
         
         print(f"🎯 Sales AI Brain initialized for product: {self.product_id}")

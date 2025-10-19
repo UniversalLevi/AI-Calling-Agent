@@ -40,6 +40,40 @@ const getProducts = async (req, res) => {
   }
 };
 
+// Set Active Product (only one active at a time)
+const setActiveProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    // Deactivate all products first
+    await Product.updateMany({ isActive: true }, { $set: { isActive: false } });
+    // Activate selected product
+    product.isActive = true;
+    await product.save();
+
+    res.json({ success: true, message: 'Active product set successfully', data: product });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error setting active product', error: error.message });
+  }
+};
+
+// Get Active Product
+const getActiveProduct = async (req, res) => {
+  try {
+    const product = await Product.findOne({ isActive: true }).sort({ updatedAt: -1 });
+    if (!product) {
+      return res.json({ success: true, data: null, message: 'No active product set' });
+    }
+    res.json({ success: true, data: product });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error fetching active product', error: error.message });
+  }
+};
+
 const getProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);

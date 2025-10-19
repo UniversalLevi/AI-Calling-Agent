@@ -440,6 +440,29 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
+### FastAPI Parallel Server (New)
+- Added `src/fastapi_server.py` running on port 8001 alongside existing Flask for phased migration.
+- Startup tasks (in DEBUG_MODE=true): TTS cache warmup, health monitor.
+- Health endpoint: `GET http://localhost:8001/health`.
+
+### Voice Settings via Dashboard (New)
+- Backend endpoints:
+  - `GET /api/system/voice-settings`
+  - `PUT /api/system/voice-settings`
+- Frontend: Settings page allows selecting English/Hindi OpenAI voices.
+- Bot reads voice settings dynamically before calls.
+
+### Active Product Selection (Updated)
+- Endpoints:
+  - `PATCH /api/sales/products/:id/activate`
+  - `GET /api/sales/products/active`
+- Frontend: Product Manager has "Set Active" control.
+
+### Debug Mode & Logs (New)
+- `.env`: `DEBUG_MODE=true`, `DEBUG_LOG_FILE=debug.log`
+- Console shows INFO; file logs at DEBUG with rotation (10MB, 3 backups).
+- Timing instrumentation across STT/AI/TTS/streaming when debug enabled.
+
 **Made with ❤️ for the Hindi and English speaking community**
 
 For support or questions, please open an issue on GitHub.

@@ -9,6 +9,17 @@ from typing import Optional, Tuple
 import numpy as np
 import sounddevice as sd
 from faster_whisper import WhisperModel
+try:
+    from .debug_logger import logger, log_timing
+except Exception:
+    class _Null:
+        def __getattr__(self, *_):
+            return lambda *a, **k: None
+    logger = _Null()
+    def log_timing(name):
+        def _d(f):
+            return f
+        return _d
 
 try:
     from .config import SAMPLE_RATE, CHANNELS, RECORD_SECONDS, DEVICE_INDEX_IN, AUTO_DETECT_LANGUAGE, SUPPORTED_LANGUAGES
@@ -43,6 +54,7 @@ class MixedSTTEngine:
         sd.wait()
         return audio.flatten()
 
+    @log_timing("STT transcription")
     def transcribe_with_language(self, audio: np.ndarray, language: str = None) -> Tuple[str, str]:
         """
         Transcribe audio with specified language or auto-detect.

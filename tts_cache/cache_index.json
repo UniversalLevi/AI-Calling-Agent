@@ -1,11 +1,4 @@
 {
-  "67369d6f0089dfa5a6d4a88127df4b50": {
-    "text": "Test message",
-    "language": "hi",
-    "voice": "nova",
-    "cached_at": 1760684862.8827462,
-    "file_size": 15840
-  },
   "abc773784edf3b91ab0f1db844ba504d": {
     "text": "Hello, this is a test message",
     "language": "hi",

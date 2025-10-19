@@ -14,7 +14,9 @@ const {
   getSystemHealth,
   initializeDefaults,
   exportConfigs,
-  importConfigs
+  importConfigs,
+  getVoiceSettings,
+  updateVoiceSettings
 } = require('../controllers/systemController');
 
 const { authMiddleware, authorize, requirePermission } = require('../middleware/authMiddleware');
@@ -41,6 +43,10 @@ router.get('/analytics', requirePermission('canViewAnalytics'), getSystemAnalyti
 // @desc    Get system health status
 // @access  Private
 router.get('/health', getSystemHealth);
+
+// Voice settings
+router.get('/voice-settings', getVoiceSettings);
+router.put('/voice-settings', authorize('admin'), updateVoiceSettings);
 
 // @route   GET /api/system/export
 // @desc    Export system configurations

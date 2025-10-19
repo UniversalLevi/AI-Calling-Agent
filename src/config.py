@@ -92,6 +92,11 @@ ENABLE_TTS_CACHE = os.getenv("ENABLE_TTS_CACHE", "true").lower() == "true"
 TTS_CACHE_DIR = os.getenv("TTS_CACHE_DIR", "tts_cache")
 PRE_GENERATE_COMMON_PHRASES = os.getenv("PRE_GENERATE_COMMON_PHRASES", "true").lower() == "true"
 
+# OpenAI TTS Voices (mapping and fallback)
+OPENAI_TTS_VOICE_ENGLISH = os.getenv("OPENAI_TTS_VOICE_ENGLISH", "nova")
+OPENAI_TTS_VOICE_HINDI = os.getenv("OPENAI_TTS_VOICE_HINDI", "shimmer")
+OPENAI_TTS_VOICE_FALLBACK = os.getenv("OPENAI_TTS_VOICE_FALLBACK", "alloy")
+
 
 # =============================================================================
 # SIP CONFIGURATION (PHASE 2)
@@ -113,6 +118,7 @@ PRINT_BOT_TEXT = os.getenv("PRINT_BOT_TEXT", "true").lower() == "true"
 # ADVANCED SETTINGS
 # =============================================================================
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+DEBUG_LOG_FILE = os.getenv("DEBUG_LOG_FILE", "debug.log")
 MAX_HISTORY_LENGTH = int(os.getenv("MAX_HISTORY_LENGTH", "10"))
 AUDIO_BUFFER_SIZE = int(os.getenv("AUDIO_BUFFER_SIZE", "1024"))
 SIP_TIMEOUT = int(os.getenv("SIP_TIMEOUT", "30"))

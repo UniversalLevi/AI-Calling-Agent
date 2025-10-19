@@ -15,6 +15,14 @@ import asyncio
 import base64
 import json
 import logging
+try:
+    from .debug_logger import logger, log_timing_async
+except Exception:
+    def log_timing_async(name):
+        def _d(f):
+            return f
+        return _d
+    logger = logging.getLogger(__name__)
 import subprocess
 import audioop
 import time
@@ -138,6 +146,7 @@ class TwilioMediaStreamsServer:
             logger.info("🛑 Stream stopped by Twilio")
             self._cleanup_connection()
     
+    @log_timing_async("Audio frame processing")
     async def _process_audio_data(self, media_data: Dict[str, Any]):
         """Process incoming audio data from Twilio"""
         try:
@@ -231,6 +240,7 @@ class TwilioMediaStreamsServer:
         except Exception as e:
             logger.error(f"❌ Failed to send clear command: {e}")
     
+    @log_timing_async("TTS streaming to Twilio")
     async def speak_text(self, text: str):
         """Speak text using TTS with chunked streaming for interruption"""
         if not self._ws or not self._stream_sid:

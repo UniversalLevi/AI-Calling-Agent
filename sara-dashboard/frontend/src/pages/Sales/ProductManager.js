@@ -91,6 +91,18 @@ const ProductManager = () => {
     }
   };
 
+  const handleSetActive = async (productId) => {
+    try {
+      const response = await fetch(`/api/sales/products/${productId}/activate`, { method: 'PATCH' });
+      const result = await response.json();
+      if (result.success) {
+        fetchProducts();
+      }
+    } catch (error) {
+      console.error('Error setting active product:', error);
+    }
+  };
+
   const handleEdit = (product) => {
     setEditingProduct(product);
     setFormData(product);
@@ -204,6 +216,15 @@ const ProductManager = () => {
                 >
                   <TrashIcon className="h-5 w-5" />
                 </button>
+                {!product.isActive && (
+                  <button
+                    onClick={() => handleSetActive(product._id)}
+                    className="text-green-600 hover:text-green-800"
+                    title="Set Active"
+                  >
+                    <EyeIcon className="h-5 w-5" />
+                  </button>
+                )}
               </div>
             </div>
             

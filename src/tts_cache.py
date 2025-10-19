@@ -9,6 +9,7 @@ import json
 import time
 from pathlib import Path
 from typing import Dict, Optional, List
+from functools import lru_cache
 import threading
 
 class TTSCache:
@@ -20,6 +21,8 @@ class TTSCache:
         self.cache_index_file = self.cache_dir / "cache_index.json"
         self.cache_index = self._load_cache_index()
         self.lock = threading.Lock()
+        # Lightweight in-memory cache (LRU for small common phrases)
+        self._memory_cache: Dict[str, str] = {}
         
         # Pre-defined common phrases to cache
         self.common_phrases = self._get_common_phrases()
@@ -116,12 +119,18 @@ class TTSCache:
         cache_key = self._get_cache_key(text, language, voice)
         
         with self.lock:
+            # Memory first
+            mem = self._memory_cache.get(cache_key)
+            if mem:
+                return mem
             if cache_key in self.cache_index:
                 cache_info = self.cache_index[cache_key]
                 audio_file = self.cache_dir / f"{cache_key}.mp3"
                 
                 # Check if file still exists
                 if audio_file.exists():
+                    # Promote to memory cache
+                    self._memory_cache[cache_key] = str(audio_file)
                     return str(audio_file)
                 else:
                     # Remove from index if file missing
@@ -135,6 +144,8 @@ class TTSCache:
         cache_key = self._get_cache_key(text, language, voice)
         
         with self.lock:
+            # Memory record
+            self._memory_cache[cache_key] = str(self.cache_dir / f"{cache_key}.mp3")
             # Copy audio file to cache directory
             cached_file = self.cache_dir / f"{cache_key}.mp3"
             try:
