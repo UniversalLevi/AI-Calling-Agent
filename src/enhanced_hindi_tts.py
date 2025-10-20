@@ -105,18 +105,22 @@ class EnhancedHindiTTS:
         try:
             from openai import OpenAI
             api_key = os.getenv('OPENAI_API_KEY')
-            model = os.getenv('OPENAI_TTS_MODEL', 'tts-1')
+            # Use faster tts-1 model instead of tts-1-hd for lower latency
+            model = 'tts-1'  # Force faster model
             voice = self._select_openai_voice(text)
-            client = OpenAI(api_key=api_key)
+            client = OpenAI(api_key=api_key, timeout=10.0)  # Add 10s timeout
 
             audio_dir = Path("audio_files")
             audio_dir.mkdir(exist_ok=True)
             timestamp = int(time.time() * 1000)
-            audio_file = audio_dir / f"sara_voice_{timestamp}.mp3"
+            audio_filename = f"sara_voice_{timestamp}.mp3"
+            audio_file = audio_dir / audio_filename
 
             optimized_text = self._optimize_text_for_tts(text)
+            
+            print(f"🎤 Generating TTS for: {text[:50]}...")
 
-            # Generate MP3 bytes
+            # Generate MP3 bytes with timeout
             response = client.audio.speech.create(
                 model=model,
                 voice=voice,
@@ -126,16 +130,17 @@ class EnhancedHindiTTS:
 
             with open(audio_file, 'wb') as f:
                 f.write(response.content)
-
-            logger.debug(f"TTS generated via OpenAI model={model} voice={voice} -> {audio_file.name}")
-            return audio_file.name
+            
+            print(f"✅ TTS file created: {audio_filename}")
+            logger.debug(f"TTS generated via OpenAI model={model} voice={voice} -> {audio_file}")
+            # Return just the filename, not the full path
+            return audio_filename
         except Exception as e:
             print(f"❌ OpenAI TTS error: {e}")
             try:
-                from .debug_logger import logger
                 logger.error(f"OpenAI TTS error: {type(e).__name__}: {e}")
-            except Exception:
-                pass
+            except:
+                pass  # Logger may not be available in this context
             return None
     
     def _optimize_text_for_tts(self, text: str) -> str:
@@ -419,18 +424,7 @@ class EnhancedHindiTTS:
         """
         print(f"🎤 Generating enhanced Hindi TTS for: '{text}'")
         
-        # Check cache first
-        try:
-            from .tts_cache import get_tts_cache
-            cache = get_tts_cache()
-            
-            # Try to get cached version
-            cached_file = cache.get_cached_audio(text, "hi", "nova")
-            if cached_file:
-                print(f"🎵 Using cached TTS: {text[:30]}...")
-                return cached_file
-        except ImportError:
-            pass
+        # TTS cache removed for reliability
         
         # Detect if text contains Hindi characters
         has_hindi = any('\u0900' <= char <= '\u097F' for char in text)
@@ -438,15 +432,6 @@ class EnhancedHindiTTS:
         # OpenAI-only path
         result = self.speak_openai(text)
         if result:
-            try:
-                from .tts_cache import get_tts_cache
-                cache = get_tts_cache()
-                audio_dir = os.path.join(os.path.dirname(__file__), '..', 'audio_files')
-                abs_result = os.path.join(audio_dir, os.path.basename(result))
-                if os.path.exists(abs_result):
-                    cache.cache_audio(text, "hi", "nova", abs_result)
-            except ImportError:
-                pass
             self._cleanup_old_audio_files()
             return result
         print("❌ OpenAI TTS failed, returning text")
@@ -661,7 +646,8 @@ def speak_enhanced_hindi(text: str) -> str:
 
 def speak_mixed_enhanced(text: str) -> str:
     """Main function to generate enhanced mixed language speech"""
-    return enhanced_hindi_tts.speak_mixed_language(text)
+    result = enhanced_hindi_tts.speak_openai(text)
+    return result if result else text
 
 
 def speak_enhanced_hindi_bytes(text: str) -> bytes:
