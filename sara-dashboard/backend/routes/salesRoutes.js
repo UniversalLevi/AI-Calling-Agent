@@ -26,7 +26,7 @@ const {
 } = require('../controllers/salesController');
 
 // Product Management Routes
-router.get('/products/active', getActiveProduct); // Must come before /:id route
+router.get('/products/active', getActiveProduct);  // Specific route first
 router.get('/products', getProducts);
 router.get('/products/:id', getProduct);
 router.post('/products', createProduct);

@@ -76,17 +76,35 @@ class UltraSimpleInterruption:
         # Play bot response INSIDE gather for true interruption
         if bot_text:
             try:
-                from src.enhanced_hindi_tts import speak_mixed_enhanced
-                audio_file = speak_mixed_enhanced(bot_text)
-                if audio_file:
-                    gather.play(f"/audio/{audio_file}")
-                    logger.info(f"🎵 Playing TTS inside gather: {bot_text[:50]}...")
+                start_time = time.time()
+                logger.info(f"🎤 Starting TTS generation for: {bot_text[:50]}...")
+                
+                from src.enhanced_hindi_tts import EnhancedHindiTTS
+                tts = EnhancedHindiTTS()
+                audio_filename = tts.speak_openai(bot_text)  # Now returns just filename
+                
+                elapsed = time.time() - start_time
+                logger.info(f"✅ TTS generation completed in {elapsed:.2f}s")
+                
+                if audio_filename:
+                    # Check if file exists in audio_files directory
+                    audio_path = os.path.join('audio_files', audio_filename)
+                    if os.path.exists(audio_path):
+                        file_size = os.path.getsize(audio_path)
+                        logger.info(f"✅ TTS file verified: {audio_filename} ({file_size} bytes)")
+                        gather.play(f"/audio/{audio_filename}")
+                        logger.info(f"🎵 Playing TTS inside gather: {bot_text[:50]}...")
+                    else:
+                        logger.warning(f"⚠️ TTS file not found: {audio_path}, using Twilio voice fallback")
+                        self._add_twilio_voice_to_gather(gather, bot_text, language)
                 else:
                     # Fallback to Twilio voice
-                    logger.warning("⚠️ TTS returned None, using Twilio voice fallback")
+                    logger.warning(f"⚠️ TTS returned None, using Twilio voice fallback")
                     self._add_twilio_voice_to_gather(gather, bot_text, language)
             except Exception as e:
                 logger.error(f"❌ TTS error: {e}")
+                import traceback
+                traceback.print_exc()
                 self._add_twilio_voice_to_gather(gather, bot_text, language)
         else:
             # If no bot text, add a default message to prevent empty gather

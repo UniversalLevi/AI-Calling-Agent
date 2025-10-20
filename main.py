@@ -42,7 +42,8 @@ def setup_calling_bot_logging():
     """Set up file logging for the calling bot"""
     # Create logger
     logger = logging.getLogger('calling_bot')
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)  # Capture all levels
+    logger.propagate = False  # Don't propagate to root logger
     
     # Remove existing handlers to avoid duplicates
     for handler in logger.handlers[:]:
@@ -50,15 +51,21 @@ def setup_calling_bot_logging():
     
     # Create file handler - write to root directory
     log_file = 'calling_bot.log'
-    file_handler = logging.FileHandler(log_file, encoding='utf-8')
-    file_handler.setLevel(logging.INFO)
+    file_handler = logging.FileHandler(log_file, encoding='utf-8', mode='a')
+    file_handler.setLevel(logging.DEBUG)
+    
+    # Create console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
     
     # Create formatter
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(formatter)
+    console_handler.setFormatter(logging.Formatter('%(message)s'))
     
-    # Add handler to logger
+    # Add handlers to logger
     logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
     
     return logger
 
@@ -66,15 +73,15 @@ def setup_calling_bot_logging():
 calling_bot_logger = setup_calling_bot_logging()
 
 def log_calling_bot(message, level='info'):
-    """Log message to calling bot log file"""
+    """Log message to calling bot log file and console"""
     if level == 'error':
         calling_bot_logger.error(message)
     elif level == 'warning':
         calling_bot_logger.warning(message)
+    elif level == 'debug':
+        calling_bot_logger.debug(message)
     else:
         calling_bot_logger.info(message)
-    # Also print to console
-    print(message)
 
 # Clean up old audio files on startup
 def cleanup_startup_audio():
@@ -416,6 +423,14 @@ def create_voice_bot_server():
         if call_sid not in bot_app.call_language:
             bot_app.call_language[call_sid] = {}
         if isinstance(bot_app.call_language[call_sid], dict):
+            # Check if this is a duplicate call (within 2 seconds)
+            if 'start_time' in bot_app.call_language[call_sid]:
+                time_diff = (datetime.now() - bot_app.call_language[call_sid]['start_time']).total_seconds()
+                if time_diff < 2:
+                    print(f"⚠️ Duplicate /voice call detected for {call_sid}, ignoring")
+                    # Return a simple "please wait" response
+                    response.pause(length=1)
+                    return str(response)
             bot_app.call_language[call_sid]['start_time'] = datetime.now()
         
         # Initialize conversation memory
