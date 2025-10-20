@@ -472,6 +472,13 @@ def create_voice_bot_server():
             print(f"🚀 Smart call mode active: {', '.join(features)}")
         
         if REALTIME_AVAILABLE and realtime_mode:
+            # If we've already greeted this call, do NOT greet again on retries
+            already_greeted = False
+            try:
+                call_state = bot_app.call_language.get(call_sid, {}) if call_sid else {}
+                already_greeted = bool(call_state.get('greeted', False))
+            except Exception:
+                already_greeted = False
             # Use enhanced real-time conversation with shorter timeouts
             print("🚀 Starting smart call mode")
             
@@ -482,12 +489,35 @@ def create_voice_bot_server():
             if interruption_mode == 'simple' and ULTRA_SIMPLE_INTERRUPTION_AVAILABLE:
                 print("🎧 Using ultra-simple interruption system for greeting")
                 try:
-                    from src.ultra_simple_interruption import create_ultra_simple_response
-                    response_twiml = create_ultra_simple_response(call_sid, greeting_text, 'en')
-                    print(f"✅ Ultra-simple response created successfully")
-                    print(f"📞 Response length: {len(str(response_twiml))} characters")
-                    log_calling_bot(f"✅ Ultra-simple response created for call {call_sid}")
-                    return str(response_twiml)
+                    # If already greeted, skip TTS greeting and just gather
+                    if already_greeted:
+                        gather = response.gather(
+                            input='speech',
+                            action='/process_speech_realtime?interruption=simple',
+                            timeout=5,
+                            speech_timeout='auto',
+                            language='en-IN',
+                            enhanced='true',
+                            profanity_filter='false'
+                        )
+                        response.redirect('/ultra_simple_interruption_timeout')
+                        print("⏩ Skipping repeated greeting; continuing to listen")
+                        return str(response)
+                    else:
+                        from src.ultra_simple_interruption import create_ultra_simple_response
+                        response_twiml = create_ultra_simple_response(call_sid, greeting_text, 'en')
+                        # Mark greeted so we don't greet again
+                        try:
+                            if call_sid:
+                                if call_sid not in bot_app.call_language or not isinstance(bot_app.call_language.get(call_sid), dict):
+                                    bot_app.call_language[call_sid] = {}
+                                bot_app.call_language[call_sid]['greeted'] = True
+                        except Exception:
+                            pass
+                        print(f"✅ Ultra-simple response created successfully")
+                        print(f"📞 Response length: {len(str(response_twiml))} characters")
+                        log_calling_bot(f"✅ Ultra-simple response created for call {call_sid}")
+                        return str(response_twiml)
                 except Exception as e:
                     print(f"❌ Ultra-simple interruption error: {e}")
                     log_calling_bot(f"❌ Ultra-simple interruption error: {e}")
@@ -766,6 +796,40 @@ def create_voice_bot_server():
         interruption_mode = request.args.get('interruption', 'none').lower()
         print(f"⚡ Interruption mode: {interruption_mode}")
         
+        # ---- Strong de-duplication (Twilio can POST the same transcript twice) ----
+        try:
+            normalized_text = ' '.join((speech_result or '').strip().lower().split())
+            now_epoch = time.time()
+
+            # Per-call structure init
+            if call_sid:
+                if call_sid not in bot_app.call_language or not isinstance(bot_app.call_language.get(call_sid), dict):
+                    bot_app.call_language[call_sid] = {}
+
+                last_meta = bot_app.call_language[call_sid].get('last_utterance_meta') or {}
+                last_text = last_meta.get('text', '')
+                last_ts = float(last_meta.get('ts', 0.0))
+                # Stronger suppress window (3s) and normalized comparison
+                if normalized_text and (normalized_text == ' '.join(last_text.strip().lower().split())) and (now_epoch - last_ts) <= 3.0:
+                    print(f"🛑 Duplicate STT (<=3s) suppressed: '{speech_result}'")
+                    keep_listening = VoiceResponse()
+                    # Stay in realtime processing path to avoid rerunning /voice greeting
+                    keep_listening.redirect(f"/process_speech_realtime?interruption=simple")
+                    return str(keep_listening)
+
+                # Track last response time as well to avoid back-to-back loops
+                last_resp_ts = float(bot_app.call_language[call_sid].get('last_response_ts', 0.0))
+                if (now_epoch - last_resp_ts) <= 1.2 and normalized_text == last_text.strip().lower():
+                    print(f"🛑 Rapid repeat suppressed (<=1.2s): '{speech_result}'")
+                    keep_listening = VoiceResponse()
+                    keep_listening.redirect(f"/process_speech_realtime?interruption=simple")
+                    return str(keep_listening)
+
+                # Save meta early to block concurrent duplicates
+                bot_app.call_language[call_sid]['last_utterance_meta'] = { 'text': speech_result, 'ts': now_epoch }
+        except Exception as _e:
+            print(f"⚠️ Strong dedup error (ignored): {_e}")
+
         # Enhanced STT confidence check with dynamic handling
         speech_confidence = float(request.form.get('Confidence', '0.0'))
         print(f"🎤 Speech confidence: {speech_confidence:.2f}")
@@ -1145,6 +1209,17 @@ def create_voice_bot_server():
                     'stage': conversation_stage
                 })
                 
+                # Sales flow intent cues (agreement/objection) to guide next step
+                agreement_keywords = [
+                    'haan', 'han', 'ha', 'yes', 'okay', 'ok', 'theek hai', 'thik hai', 'sahi hai', 'sure', 'go ahead', 'kar do', 'aage batao'
+                ]
+                refusal_keywords = [
+                    'no', 'nahi', 'nahin', 'mat', 'nahi chahiye', 'stop', 'baad me', 'later', 'not interested', 'chhodo'
+                ]
+                user_lower_all = speech_result.lower()
+                user_agrees = any(k in user_lower_all for k in agreement_keywords)
+                user_refuses = any(k in user_lower_all for k in refusal_keywords)
+
                 if bot_app.gpt:
                     # Check for inappropriate content first
                     from src.language_detector import detect_inappropriate_content, get_appropriate_response
@@ -1388,9 +1463,17 @@ def create_voice_bot_server():
                             print("🔄 Using regular AI brain (Sales AI not available or not initialized)")
                             # Generate response with memory-aware prompting (optimized for speed)
                             enhanced_prompt = get_memory_aware_prompt(conversation_stage, detected_language, bot_app.call_language[call_sid])
+
+                            # Add sales flow hint to push conversation forward
+                            if user_agrees:
+                                sales_flow_hint = "\n\nSALES_FLOW: Caller AGREED. Move forward: ask for concrete next detail (e.g., destination, dates, budget), do not repeat previous pitch. Keep it to 1-2 short sentences."
+                            elif user_refuses:
+                                sales_flow_hint = "\n\nSALES_FLOW: Caller OBJECTED. Acknowledge politely and handle objection with one brief benefit, then ask one alternative question to keep the call moving. Keep it to 1-2 short sentences."
+                            else:
+                                sales_flow_hint = "\n\nSALES_FLOW: Progress the call like a salesperson. Ask one specific next-step question based on context. Avoid repeating prior lines. Keep it concise."
                             
                             # Optimize prompt for faster response with better context
-                            optimized_prompt = f"{enhanced_prompt}\n\nUser: {speech_result}\n\nRespond quickly, concisely, and naturally in the same language as the user:"
+                            optimized_prompt = f"{enhanced_prompt}{sales_flow_hint}\n\nUser: {speech_result}\n\nRespond quickly, concisely, and naturally in the same language as the user:"
                             
                             # Use streaming AI for faster response
                             try:
@@ -2078,7 +2161,7 @@ def start_media_streams_server():
         return False
 
 def start_voice_bot_server():
-    """Start the FastAPI voice bot server in a separate thread"""
+    """Start the Flask voice bot server in a separate thread (Flask-only)."""
     global voice_bot_app
     
     if 'voice_bot_server' in running_services:
@@ -2086,39 +2169,32 @@ def start_voice_bot_server():
         return True
     
     try:
-        print("🚀 Starting FastAPI voice bot server...")
+        voice_bot_app = create_voice_bot_server()
         
-        def run_fastapi_server():
-            try:
-                from src.fastapi_server import run
-                run(host='0.0.0.0', port=8000)
-            except Exception as e:
-                print(f"❌ FastAPI server error: {e}")
-                import traceback
-                traceback.print_exc()
+        def run_bot_server():
+            import logging
+            log = logging.getLogger('werkzeug')
+            log.setLevel(logging.ERROR)
+            voice_bot_app.run(host='0.0.0.0', port=8000, debug=False, use_reloader=False)
         
-        bot_thread = threading.Thread(target=run_fastapi_server, daemon=True)
+        bot_thread = threading.Thread(target=run_bot_server, daemon=True)
         bot_thread.start()
         
         # Wait for server to start
-        print("⏳ Waiting for FastAPI server to start...")
-        for i in range(15):
+        for _ in range(15):
             try:
-                response = requests.get("http://localhost:8000/health", timeout=1)
-                if response.status_code == 200:
+                resp = requests.get("http://localhost:8000/health", timeout=1)
+                if resp.status_code == 200:
                     running_services['voice_bot_server'] = bot_thread
-                    print("✅ FastAPI voice bot server started on port 8000!")
+                    print("✅ Flask voice bot server started on port 8000!")
                     return True
-            except:
-                time.sleep(1)
+            except Exception:
+                time.sleep(0.5)
         
         print("❌ Voice bot server failed to start")
         return False
-        
     except Exception as e:
         print(f"❌ Error starting voice bot server: {e}")
-        import traceback
-        traceback.print_exc()
         return False
 
 def start_ngrok():
@@ -2737,7 +2813,7 @@ def main_menu():
         print("-" * 30)
         print("✅ Services Status:")
         print("   🌐 Ngrok: Running")
-        print("   🚀 FastAPI Server: Running")
+        # FastAPI server disabled in Flask-only mode
         print("   🎯 System: Ready for calls!")
         print("-" * 30)
         print("1. 📞 Make Smart Call")
@@ -2904,8 +2980,7 @@ def main():
         print("⚠️ Some services failed to start")
         if not audio_started:
             print("❌ Audio server failed")
-        if not voice_started:
-            print("❌ Voice bot server failed")
+        # Do not report FastAPI server status in Flask-only mode
     
     print("-" * 30)
     
