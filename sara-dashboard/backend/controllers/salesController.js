@@ -440,6 +440,8 @@ module.exports = {
   createProduct,
   updateProduct,
   deleteProduct,
+  setActiveProduct,
+  getActiveProduct,
   
   // Sales Script Management
   getSalesScripts,
