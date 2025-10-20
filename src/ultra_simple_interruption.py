@@ -76,7 +76,6 @@ class UltraSimpleInterruption:
         # Play bot response INSIDE gather for true interruption
         if bot_text:
             try:
-                import time
                 start_time = time.time()
                 logger.info(f"🎤 Starting TTS generation for: {bot_text[:50]}...")
                 
