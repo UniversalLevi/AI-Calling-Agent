@@ -770,6 +770,29 @@ def create_voice_bot_server():
         speech_confidence = float(request.form.get('Confidence', '0.0'))
         print(f"🎤 Speech confidence: {speech_confidence:.2f}")
         
+        # Suppress duplicate transcripts arriving back-to-back (Twilio retries/pacing)
+        try:
+            from time import time as _now
+            if call_sid:
+                if call_sid not in bot_app.call_language:
+                    bot_app.call_language[call_sid] = {}
+                if isinstance(bot_app.call_language[call_sid], dict):
+                    last_meta = bot_app.call_language[call_sid].get('last_utterance_meta') or {}
+                    last_text = last_meta.get('text', '')
+                    last_ts = last_meta.get('ts', 0.0)
+                    now_ts = _now()
+                    is_duplicate = (speech_result.strip() == last_text.strip()) and ((now_ts - last_ts) <= 2.0)
+                    if is_duplicate:
+                        print(f"🛑 Suppressing duplicate transcript within 2s: '{speech_result}'")
+                        # Keep listening without responding
+                        keep_listening = VoiceResponse()
+                        keep_listening.redirect(f"/voice?realtime=true&interruption=simple&media_streams=true")
+                        return str(keep_listening)
+                    # Record current utterance meta
+                    bot_app.call_language[call_sid]['last_utterance_meta'] = { 'text': speech_result, 'ts': now_ts }
+        except Exception as _e:
+            print(f"⚠️ Duplicate suppression check failed: {_e}")
+
         # Dynamic confidence-based processing
         if speech_confidence < 0.2:
             print(f"⚠️ Very low confidence speech: '{speech_result}' - confidence: {speech_confidence}")
@@ -805,11 +828,11 @@ def create_voice_bot_server():
                 
                 # Hindi (Devanagari script)
                 'बाय', 'बाय बाय', 'बाय बाय बाय', 'थैंक यू', 'धन्यवाद', 'शुक्रिया',
-                'अलविदा', 'फिर मिलेंगे', 'कॉल कट', 'कॉल बंद', 'फोन कट',
+                'अलविदा', 'फिर मिलेंगे', 'कॉल कट', 'कॉल बंद', 'फोन कट', 'फोन काट', 'फोन काट दो', 'कॉल काट', 'कॉल काट दो', 'कट दो', 'काट दो', 'रख दो', 'बंद करो', 'फोन बंद करो', 'कॉल बंद करो',
                 
                 # Hinglish/Mixed
-                'call khatam', 'call band', 'phone kat do', 'call cut', 'call band kar do',
-                'dhanyavad', 'shukriya', 'namaste', 'alvida', 'phir milenge',
+                'call khatam', 'call band', 'phone kat do', 'phone kaat do', 'call cut', 'call band kar do', 'call bandh karo', 'phone bandh karo', 'band kro', 'band kar do', 'kat do', 'kaat do', 'rakh do',
+                'dhanyavad', 'shukriya', 'namaste', 'alvida', 'phir milenge', 'theek hai bye', 'thik hai bye',
                 'thank you bye', 'bye thank you', 'thank you bye bye', 'bye bye thank you',
                 'shukriya bye', 'bye shukriya', 'dhanyavad bye', 'bye dhanyavad'
             ]
