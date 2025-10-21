@@ -256,17 +256,6 @@ except ImportError as e:
     SIMPLE_INTERRUPTION_AVAILABLE = False
     print(f"⚠️ Simple interruption not available: {e}")
 
-# Import Sales AI system
-try:
-    from src.sales_ai_brain import SalesAIBrain
-    from src.sales_context_manager import SalesContextManager, ConversationStage
-    from src.sales_analytics_tracker import SalesAnalyticsTracker
-    SALES_AI_AVAILABLE = True
-    print("✅ Sales AI system available")
-except ImportError as e:
-    SALES_AI_AVAILABLE = False
-    print(f"⚠️ Sales AI system not available: {e}")
-
 # Import WebSocket Interruption system (advanced)
 try:
     from src.websocket_interruption import start_websocket_interruption_server, WebSocketInterruptionHandler
@@ -286,11 +275,6 @@ ngrok_process = None
 running_services = {}
 realtime_voice_bot = None
 twilio_realtime_integration = None
-
-# Global variables for sales system
-sales_context_managers = {}  # call_id -> SalesContextManager
-sales_analytics_trackers = {}  # call_id -> SalesAnalyticsTracker
-active_sales_brain = None
 
 # =============================================================================
 # AUDIO SERVER (Built-in)
@@ -360,45 +344,18 @@ def create_voice_bot_server():
         
         stt = MixedSTTEngine()
         
-        # Check if AIDA mode is enabled
-        aida_mode = os.getenv('AIDA_MODE_ENABLED', 'false').lower() == 'true'
-        aida_product_id = os.getenv('AIDA_PRODUCT_ID')
-        
-        if aida_mode:
-            try:
-                from src.aida_ai_brain import AidaAIBrain
-                from src.aida_analytics_tracker import AidaAnalyticsTracker
-                from src.dashboard_integration import SalesDashboardIntegration
-                
-                # Initialize AIDA components
-                gpt = AidaAIBrain(aida_product_id)
-                aida_analytics = AidaAnalyticsTracker()
-                dashboard_integration = SalesDashboardIntegration()
-                
-                # Load product data from dashboard
-                product_data = dashboard_integration.get_active_aida_product()
-                if product_data:
-                    gpt.product_data = product_data
-                
-                bot_app.aida_mode = True
-                bot_app.aida_analytics = aida_analytics
-                bot_app.dashboard_integration = dashboard_integration
-                
-                print("🎯 AIDA mode enabled!")
-                print(f"📦 Product: {gpt.product_data.get('product_name', 'Unknown')}")
-                
-            except Exception as e:
-                print(f"⚠️ AIDA mode failed, falling back to regular AI: {e}")
-                gpt = MixedAIBrain()
-                bot_app.aida_mode = False
-        else:
+        # Initialize AI components
+        try:
             gpt = MixedAIBrain()
-            bot_app.aida_mode = False
+            bot_app.gpt = gpt
+            print("✅ AI Brain initialized")
+        except Exception as e:
+            print(f"❌ Error initializing AI components: {e}")
+            bot_app.gpt = None
         
         print("✅ Enhanced AI components ready!")
         
         bot_app.stt = stt
-        bot_app.gpt = gpt
         bot_app.enhanced_tts = speak_mixed_enhanced
         # Per-call language state (CallSid -> 'en' | 'hi' | 'mixed')
         bot_app.call_language = {}
@@ -733,30 +690,7 @@ def create_voice_bot_server():
                     print(f"💾 Saved language for call {call_sid}: {detected_language}")
                 
                 if bot_app.gpt:
-                    # Initialize AIDA context if in AIDA mode
-                    if hasattr(bot_app, 'aida_mode') and bot_app.aida_mode:
-                        if not hasattr(bot_app.gpt, 'aida_context') or not bot_app.gpt.aida_context:
-                            bot_app.gpt.initialize_aida_context(call_sid)
-                            print(f"🎯 AIDA context initialized for call: {call_sid}")
-                    
-                    print(f"🧠 Processing with {'AIDA' if hasattr(bot_app, 'aida_mode') and bot_app.aida_mode else 'Mixed Language'} AI...")
-                    bot_response = bot_app.gpt.ask(speech_result, detected_language)
-                    print(f"🤖 AI Bot response ({detected_language}): {bot_response}")
-                    
-                    # Track AIDA analytics if enabled
-                    if hasattr(bot_app, 'aida_mode') and bot_app.aida_mode and hasattr(bot_app, 'aida_analytics'):
-                        aida_context = bot_app.gpt.get_aida_context()
-                        if aida_context:
-                            # Track intent
-                            intent, confidence = aida_context.analyze_user_intent(speech_result)
-                            bot_app.aida_analytics.track_intent(call_sid, intent.value, confidence, aida_context.get_current_stage().value)
-                            
-                            # Track stage if transitioned
-                            if aida_context.should_transition_stage(intent):
-                                old_stage = aida_context.get_current_stage().value
-                                bot_app.aida_analytics.track_stage_exit(call_sid, old_stage, time.time() - aida_context.stage_start_time)
-                                aida_context.transition_to_stage(aida_context.get_current_stage(), f"User showed {intent.value} intent")
-                                bot_app.aida_analytics.track_stage_entry(call_sid, aida_context.get_current_stage().value)
+                    print(f"🧠 Processing with Mixed Language AI...")
                 else:
                     # Fallback response
                     if detected_language == 'hi':
@@ -827,7 +761,7 @@ def create_voice_bot_server():
     
     @bot_app.route('/process_speech_realtime', methods=['POST'])
     def process_speech_realtime():
-        """Enhanced real-time speech processing with sales AI integration"""
+        """Enhanced real-time speech processing with simple conversation flow"""
         response = VoiceResponse()
         speech_result = request.form.get('SpeechResult', '')
         caller = request.form.get('From', 'Unknown')
@@ -1000,23 +934,6 @@ def create_voice_bot_server():
                     history = bot_app.call_language[call_sid].get('conversation_history', [])
                     transcript = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
                 
-                # Track AIDA call outcome if enabled
-                if hasattr(bot_app, 'aida_mode') and bot_app.aida_mode and hasattr(bot_app, 'aida_analytics'):
-                    aida_context = bot_app.gpt.get_aida_context()
-                    if aida_context:
-                        final_stage = aida_context.get_current_stage().value
-                        outcome = 'converted' if final_stage == 'action' else 'qualified' if final_stage in ['interest', 'desire'] else 'not_qualified'
-                        
-                        bot_app.aida_analytics.track_call_outcome(
-                            call_sid, 
-                            outcome, 
-                            final_stage, 
-                            duration,
-                            aida_context.product_data.get('_id') if aida_context.product_data else None
-                        )
-                        
-                        print(f"📊 AIDA call outcome tracked: {outcome} (final stage: {final_stage})")
-                
                 dashboard.log_call_end({
                     'call_sid': call_sid,
                     'status': 'success',
@@ -1042,55 +959,7 @@ def create_voice_bot_server():
                 bot_app.call_language[call_sid]['partial_speech_count'] = 0
                 bot_app.call_language[call_sid]['interrupted_text'] = ''
         
-        # Sales AI Integration
-        if SALES_AI_AVAILABLE and os.getenv('SALES_MODE_ENABLED', 'true').lower() == 'true':
-            try:
-                # Initialize sales AI brain globally if not exists
-                global active_sales_brain
-                if not active_sales_brain:
-                    try:
-                        product_id = os.getenv('ACTIVE_PRODUCT_ID', 'default')
-                        active_sales_brain = SalesAIBrain(product_id)
-                        print(f"🧠 Sales AI brain initialized for product: {product_id}")
-                    except Exception as e:
-                        print(f"❌ Failed to initialize Sales AI brain: {e}")
-                        active_sales_brain = None
-                
-                # Initialize sales context manager if not exists
-                if call_sid not in sales_context_managers:
-                    product_id = os.getenv('ACTIVE_PRODUCT_ID', 'default')
-                    sales_context_managers[call_sid] = SalesContextManager(call_sid, product_id)
-                    sales_analytics_trackers[call_sid] = SalesAnalyticsTracker(call_sid)
-                    print(f"🎯 Sales context manager initialized for call: {call_sid}")
-                
-                # Get sales context manager and analytics tracker
-                sales_context = sales_context_managers[call_sid]
-                analytics_tracker = sales_analytics_trackers[call_sid]
-                
-                # Analyze user input for sales context
-                user_analysis = sales_context.analyze_user_input(speech_result)
-                
-                # Update conversation stage based on analysis
-                stage_triggers = user_analysis.get('stage_triggers', [])
-                if stage_triggers:
-                    new_stage = ConversationStage(stage_triggers[0])
-                    sales_context.update_stage(new_stage, f"User input analysis: {stage_triggers[0]}")
-                    analytics_tracker.update_conversion_stage(new_stage.value)
-                
-                # Add automatic progression if stuck in greeting
-                if sales_context.current_stage == ConversationStage.GREETING:
-                    interaction_count = len(sales_context.stage_history)
-                    if interaction_count >= 2:  # After 2 interactions, move to qualification
-                        sales_context.update_stage(ConversationStage.QUALIFICATION, 
-                                                   "Auto-progression from greeting")
-                        analytics_tracker.update_conversion_stage('qualification')
-                        print("🔄 Auto-progressed to qualification stage")
-                
-                print(f"📊 Sales Analysis - Stage: {sales_context.current_stage.value}")
-                
-            except Exception as e:
-                print(f"❌ Sales AI integration error: {e}")
-                # Continue with normal processing if sales AI fails
+        # Simple conversation flow (sales AI removed for simplicity)
             interruption_detected = False
             interrupted_text = ""
         
@@ -1239,7 +1108,7 @@ def create_voice_bot_server():
                     'stage': conversation_stage
                 })
                 
-                # Sales flow intent cues (agreement/objection) to guide next step
+                # Simple conversation flow intent detection
                 agreement_keywords = [
                     'haan', 'han', 'ha', 'yes', 'okay', 'ok', 'theek hai', 'thik hai', 'sahi hai', 'sure', 'go ahead', 'kar do', 'aage batao'
                 ]
@@ -1480,178 +1349,54 @@ def create_voice_bot_server():
                                 else:
                                     return base_prompt + "Respond helpfully and naturally. Keep it brief and focused (max 2 sentences)." + memory_context
                         
-                        # Use Sales AI Brain if available and enabled, otherwise regular AI brain
-                        if SALES_AI_AVAILABLE and os.getenv('SALES_MODE_ENABLED', 'true').lower() == 'true' and active_sales_brain is not None:
-                            print("🎯 Using Sales AI Brain for response generation")
-                            bot_response = active_sales_brain.ask(speech_result, detected_language)
-                            
-                            # Synchronize sales AI brain stage with sales context manager
-                            if call_sid in sales_context_managers:
-                                sales_context = sales_context_managers[call_sid]
-                                # Update sales context manager stage to match sales AI brain stage
-                                if hasattr(active_sales_brain, 'conversation_stage'):
-                                    try:
-                                        from src.sales_context_manager import ConversationStage
-                                        new_stage = ConversationStage(active_sales_brain.conversation_stage)
-                                        if sales_context.current_stage != new_stage:
-                                            sales_context.update_stage(new_stage, f"Synced from Sales AI Brain: {active_sales_brain.conversation_stage}")
-                                            print(f"🔄 Synced stage: {sales_context.current_stage.value}")
-                                    except Exception as e:
-                                        print(f"⚠️ Stage sync error: {e}")
-                            
-                            # Track analytics
-                            if call_sid in sales_analytics_trackers:
-                                analytics_tracker = sales_analytics_trackers[call_sid]
-                                analytics_tracker.track_exchange(speech_result, bot_response, detected_language)
+                        # Simple conversation flow - direct responses based on user input
+                        speech_lower = speech_result.lower()
+                        
+                        # Simple conversation logic
+                        if any(word in speech_lower for word in ['hello', 'hi', 'namaste', 'hey']):
+                            if detected_language in ['hi', 'mixed']:
+                                bot_response = "Namaste! Main Sara hun aur main aapko hotel booking service ke baare mein call kar rahi hun. Kya aap interested hain?"
+                            else:
+                                bot_response = "Hello! I'm Sara calling about our amazing hotel booking service. Are you interested in booking a hotel?"
+                        
+                        elif any(word in speech_lower for word in ['yes', 'haan', 'interested', 'theek hai', 'okay']):
+                            if detected_language in ['hi', 'mixed']:
+                                bot_response = "Bahut achha! Konse city mein hotel book karna chahte hain aap?"
+                            else:
+                                bot_response = "Great! What city would you like to book a hotel in?"
+                        
+                        elif any(city in speech_lower for city in ['agra', 'delhi', 'mumbai', 'goa', 'jaipur', 'bangalore', 'chennai', 'kolkata', 'hyderabad', 'pune']):
+                            if detected_language in ['hi', 'mixed']:
+                                bot_response = f"Perfect! Main aapko {speech_result} mein great hotels dila sakti hun. Aapka budget kitna hai?"
+                            else:
+                                bot_response = f"Perfect! I can help you find great hotels in {speech_result}. What's your budget range?"
+                        
+                        elif any(word in speech_lower for word in ['budget', 'price', 'cost', 'paisa', 'kitna', 'expensive', 'cheap']):
+                            if detected_language in ['hi', 'mixed']:
+                                bot_response = "Excellent! Mere paas ₹2000 se ₹10000 tak ke hotels hain. Kab travel karna chahte hain aap?"
+                            else:
+                                bot_response = "Excellent! I have hotels from ₹2000 to ₹10000 per night. When do you want to travel?"
+                        
+                        elif any(word in speech_lower for word in ['book', 'reserve', 'confirm', 'book karo', 'confirm karo']):
+                            if detected_language in ['hi', 'mixed']:
+                                bot_response = "Perfect! Main aapko booking team se connect kar deti hun. Please hold on."
+                            else:
+                                bot_response = "Perfect! I'll connect you with our booking team right now. Please hold on."
+                        
+                        elif any(word in speech_lower for word in ['no', 'nahi', 'not interested', 'busy', 'later', 'baad mein']):
+                            if detected_language in ['hi', 'mixed']:
+                                bot_response = "Koi baat nahi! Agar kabhi hotel booking ki zaroorat ho to call kar sakte hain. Thank you!"
+                            else:
+                                bot_response = "No problem! Feel free to call us anytime you need hotel booking. Thank you!"
+                        
                         else:
-                            print("🔄 Using regular AI brain (Sales AI not available or not initialized)")
-                            # Generate response with memory-aware prompting (optimized for speed)
-                            enhanced_prompt = get_memory_aware_prompt(conversation_stage, detected_language, bot_app.call_language[call_sid])
-
-                            # Add sales flow hint to push conversation forward
-                            if user_agrees:
-                                sales_flow_hint = "\n\nSALES_FLOW: Caller AGREED. Move forward: ask for concrete next detail (e.g., destination, dates, budget), do not repeat previous pitch. Keep it to 1-2 short sentences."
-                            elif user_refuses:
-                                sales_flow_hint = "\n\nSALES_FLOW: Caller OBJECTED. Acknowledge politely and handle objection with one brief benefit, then ask one alternative question to keep the call moving. Keep it to 1-2 short sentences."
+                            # Default response for unclear input
+                            if detected_language in ['hi', 'mixed']:
+                                bot_response = "Main samajh nahi payi. Kya aap hotel booking mein interested hain?"
                             else:
-                                sales_flow_hint = "\n\nSALES_FLOW: Progress the call like a salesperson. Ask one specific next-step question based on context. Avoid repeating prior lines. Keep it concise."
-                            
-                            # Optimize prompt for faster response with better context
-                            optimized_prompt = f"{enhanced_prompt}{sales_flow_hint}\n\nUser: {speech_result}\n\nRespond quickly, concisely, and naturally in the same language as the user:"
-                            
-                            # Use streaming AI for faster response
-                            try:
-                                from src.config import ENABLE_STREAMING_RESPONSES
-                                if ENABLE_STREAMING_RESPONSES and hasattr(bot_app.gpt, 'ask_stream'):
-                                    print("🚀 Using streaming AI response...")
-                                    bot_response = ""
-                                    for chunk in bot_app.gpt.ask_stream(optimized_prompt, detected_language):
-                                        bot_response += chunk
-                                        # Start TTS generation early with partial response (reduced threshold by 40%)
-                                        if len(bot_response) > 30 and len(bot_response.split()) >= 3:
-                                            print(f"⚡ Early TTS trigger: {bot_response[:30]}...")
-                                            break
-                                else:
-                                    bot_response = bot_app.gpt.ask(optimized_prompt, detected_language)
-                            except Exception as e:
-                                print(f"⚠️ Streaming failed, falling back to regular: {e}")
-                                bot_response = bot_app.gpt.ask(optimized_prompt, detected_language)
-                            
-                            # Add human-like elements to response
-                            try:
-                                from src.humanizer import enhance_response
-                                from src.config import ENABLE_FILLER_WORDS, FILLER_FREQUENCY
-                                
-                                if ENABLE_FILLER_WORDS:
-                                    bot_response = enhance_response(bot_response, detected_language)
-                                    print(f"🎭 Enhanced response with human-like elements")
-                            except Exception as e:
-                                print(f"⚠️ Humanizer failed: {e}")
-                            
-                            # Store conversation exchange in memory
-                            try:
-                                from src.conversation_memory import add_conversation_exchange, extract_and_store_info
-                                add_conversation_exchange(call_sid, speech_result, bot_response, detected_language, speech_confidence)
-                                extract_and_store_info(call_sid, speech_result)
-                                print(f"🧠 Stored conversation exchange in memory")
-                            except Exception as e:
-                                print(f"⚠️ Memory storage failed: {e}")
+                                bot_response = "I didn't catch that. Are you interested in hotel booking?"
                         
-                        # Enforce response length limits based on context
-                        def enforce_response_limits(response, stage):
-                            """Enforce dynamic response length limits"""
-                            
-                            # Check if user is asking for options/lists - allow longer responses
-                            user_wants_options = any(word in speech_result.lower() for word in ['बताओ', 'options', 'suggest', 'recommend', 'show', 'list'])
-                            
-                            # Also check if bot is providing recommendations (contains multiple options/names)
-                            bot_providing_recommendations = (
-                                'recommend' in response.lower() or 
-                                'suggest' in response.lower() or
-                                'option' in response.lower() or
-                                'choice' in response.lower() or
-                                'book' in response.lower() or
-                                'hotel' in response.lower() or
-                                'villa' in response.lower() or
-                                '"' in response or  # Quoted names like "Heritage Villa"
-                                response.count(',') >= 2 or  # Multiple items listed
-                                'both of which' in response.lower() or
-                                'either' in response.lower() and 'or' in response.lower() or
-                                '1.' in response or '2.' in response or '3.' in response or  # Numbered lists
-                                'first' in response.lower() and 'second' in response.lower()  # Multiple options
-                            )
-                            
-                            if user_wants_options or bot_providing_recommendations:
-                                # Allow much longer responses for lists/options/recommendations
-                                max_length = 1200  # Increased to 1200 characters for complete recommendations
-                            else:
-                                max_lengths = {
-                                    "initial_request": 300,  # Increased for better responses
-                                    "details": 400,          # Increased for detailed responses
-                                    "clarification": 250,    # Increased for clarifications
-                                    "selection": 300,        # Increased for selection responses
-                                    "complex_query": 500,    # Increased for complex queries
-                                    "general": 300           # Increased for general responses
-                                }
-                                max_length = max_lengths.get(stage, 300)
-                            
-                            if len(response) > max_length:
-                                # For recommendations/lists, try to keep complete items
-                                if (user_wants_options or bot_providing_recommendations) and ('1.' in response or '2.' in response):
-                                    # Try to keep complete list items
-                                    lines = response.split('\n')
-                                    truncated_lines = []
-                                    current_length = 0
-                                    
-                                    for line in lines:
-                                        if current_length + len(line) + 1 <= max_length:
-                                            truncated_lines.append(line)
-                                            current_length += len(line) + 1
-                                        else:
-                                            break
-                                    
-                                    if truncated_lines:
-                                        return '\n'.join(truncated_lines).strip()
-                                
-                                # Fallback: truncate at sentence boundary
-                                sentences = response.split('.')
-                                truncated = ""
-                                for sentence in sentences:
-                                    if len(truncated + sentence + ".") <= max_length:
-                                        truncated += sentence + "."
-                                    else:
-                                        break
-                                
-                                if truncated:
-                                    return truncated.strip()
-                                else:
-                                    # For recommendations with quotes, try to preserve complete quoted names
-                                    if bot_providing_recommendations and '"' in response:
-                                        # Find the last complete quoted item that fits
-                                        words = response.split()
-                                        truncated_words = []
-                                        current_length = 0
-                                        
-                                        for word in words:
-                                            if current_length + len(word) + 1 <= max_length:
-                                                truncated_words.append(word)
-                                                current_length += len(word) + 1
-                                            else:
-                                                break
-                                        
-                                        if truncated_words:
-                                            return ' '.join(truncated_words).strip()
-                                    
-                                    # Hard truncate if no sentence boundary found
-                                    return response[:max_length].strip() + "..."
-                            
-                            return response
-                        
-                        # Apply length limits
-                        original_length = len(bot_response)
-                        bot_response = enforce_response_limits(bot_response, conversation_stage)
-                        if len(bot_response) != original_length:
-                            print(f"⚠️ Response truncated: {original_length} → {len(bot_response)} chars")
+                        print(f"🤖 Sara: {bot_response}")
                         
                         # Initialize booking completion variables
                         booking_completed = False
