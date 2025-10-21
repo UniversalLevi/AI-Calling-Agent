@@ -14,7 +14,6 @@ const Product = require('../models/Product');
 const SalesScript = require('../models/SalesScript');
 const ObjectionHandler = require('../models/ObjectionHandler');
 const SalesTechnique = require('../models/SalesTechnique');
-const LeadQualification = require('../models/LeadQualification');
 const SalesAnalytics = require('../models/SalesAnalytics');
 
 // Connect to MongoDB

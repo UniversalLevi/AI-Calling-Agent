@@ -20,8 +20,6 @@ const {
   detectObjection,
   getObjectionResponse,
   getSalesTechniques,
-  getLeadQualification,
-  updateLeadQualification,
   getActiveCampaign
 } = require('../controllers/salesController');
 
