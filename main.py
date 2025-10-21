@@ -359,7 +359,42 @@ def create_voice_bot_server():
         from src.enhanced_hindi_tts import speak_mixed_enhanced
         
         stt = MixedSTTEngine()
-        gpt = MixedAIBrain()
+        
+        # Check if AIDA mode is enabled
+        aida_mode = os.getenv('AIDA_MODE_ENABLED', 'false').lower() == 'true'
+        aida_product_id = os.getenv('AIDA_PRODUCT_ID')
+        
+        if aida_mode:
+            try:
+                from src.aida_ai_brain import AidaAIBrain
+                from src.aida_analytics_tracker import AidaAnalyticsTracker
+                from src.dashboard_integration import SalesDashboardIntegration
+                
+                # Initialize AIDA components
+                gpt = AidaAIBrain(aida_product_id)
+                aida_analytics = AidaAnalyticsTracker()
+                dashboard_integration = SalesDashboardIntegration()
+                
+                # Load product data from dashboard
+                product_data = dashboard_integration.get_active_aida_product()
+                if product_data:
+                    gpt.product_data = product_data
+                
+                bot_app.aida_mode = True
+                bot_app.aida_analytics = aida_analytics
+                bot_app.dashboard_integration = dashboard_integration
+                
+                print("🎯 AIDA mode enabled!")
+                print(f"📦 Product: {gpt.product_data.get('product_name', 'Unknown')}")
+                
+            except Exception as e:
+                print(f"⚠️ AIDA mode failed, falling back to regular AI: {e}")
+                gpt = MixedAIBrain()
+                bot_app.aida_mode = False
+        else:
+            gpt = MixedAIBrain()
+            bot_app.aida_mode = False
+        
         print("✅ Enhanced AI components ready!")
         
         bot_app.stt = stt
@@ -423,14 +458,6 @@ def create_voice_bot_server():
         if call_sid not in bot_app.call_language:
             bot_app.call_language[call_sid] = {}
         if isinstance(bot_app.call_language[call_sid], dict):
-            # Check if this is a duplicate call (within 2 seconds)
-            if 'start_time' in bot_app.call_language[call_sid]:
-                time_diff = (datetime.now() - bot_app.call_language[call_sid]['start_time']).total_seconds()
-                if time_diff < 2:
-                    print(f"⚠️ Duplicate /voice call detected for {call_sid}, ignoring")
-                    # Return a simple "please wait" response
-                    response.pause(length=1)
-                    return str(response)
             bot_app.call_language[call_sid]['start_time'] = datetime.now()
         
         # Initialize conversation memory
@@ -534,6 +561,13 @@ def create_voice_bot_server():
                     response_twiml = create_interruption_response(call_sid, greeting_text, 'en')
                     print(f"✅ Simple response created successfully")
                     print(f"📞 Response length: {len(str(response_twiml))} characters")
+                    try:
+                        if call_sid:
+                            if call_sid not in bot_app.call_language or not isinstance(bot_app.call_language.get(call_sid), dict):
+                                bot_app.call_language[call_sid] = {}
+                            bot_app.call_language[call_sid]['last_response_ts'] = time.time()
+                    except Exception:
+                        pass
                     return str(response_twiml)
                 except Exception as e:
                     print(f"❌ Simple interruption error: {e}")
@@ -699,9 +733,30 @@ def create_voice_bot_server():
                     print(f"💾 Saved language for call {call_sid}: {detected_language}")
                 
                 if bot_app.gpt:
-                    print(f"🧠 Processing with Mixed Language AI...")
+                    # Initialize AIDA context if in AIDA mode
+                    if hasattr(bot_app, 'aida_mode') and bot_app.aida_mode:
+                        if not hasattr(bot_app.gpt, 'aida_context') or not bot_app.gpt.aida_context:
+                            bot_app.gpt.initialize_aida_context(call_sid)
+                            print(f"🎯 AIDA context initialized for call: {call_sid}")
+                    
+                    print(f"🧠 Processing with {'AIDA' if hasattr(bot_app, 'aida_mode') and bot_app.aida_mode else 'Mixed Language'} AI...")
                     bot_response = bot_app.gpt.ask(speech_result, detected_language)
                     print(f"🤖 AI Bot response ({detected_language}): {bot_response}")
+                    
+                    # Track AIDA analytics if enabled
+                    if hasattr(bot_app, 'aida_mode') and bot_app.aida_mode and hasattr(bot_app, 'aida_analytics'):
+                        aida_context = bot_app.gpt.get_aida_context()
+                        if aida_context:
+                            # Track intent
+                            intent, confidence = aida_context.analyze_user_intent(speech_result)
+                            bot_app.aida_analytics.track_intent(call_sid, intent.value, confidence, aida_context.get_current_stage().value)
+                            
+                            # Track stage if transitioned
+                            if aida_context.should_transition_stage(intent):
+                                old_stage = aida_context.get_current_stage().value
+                                bot_app.aida_analytics.track_stage_exit(call_sid, old_stage, time.time() - aida_context.stage_start_time)
+                                aida_context.transition_to_stage(aida_context.get_current_stage(), f"User showed {intent.value} intent")
+                                bot_app.aida_analytics.track_stage_entry(call_sid, aida_context.get_current_stage().value)
                 else:
                     # Fallback response
                     if detected_language == 'hi':
@@ -796,69 +851,26 @@ def create_voice_bot_server():
         interruption_mode = request.args.get('interruption', 'none').lower()
         print(f"⚡ Interruption mode: {interruption_mode}")
         
-        # ---- Strong de-duplication (Twilio can POST the same transcript twice) ----
-        try:
-            normalized_text = ' '.join((speech_result or '').strip().lower().split())
-            now_epoch = time.time()
-
-            # Per-call structure init
-            if call_sid:
-                if call_sid not in bot_app.call_language or not isinstance(bot_app.call_language.get(call_sid), dict):
-                    bot_app.call_language[call_sid] = {}
-
-                last_meta = bot_app.call_language[call_sid].get('last_utterance_meta') or {}
-                last_text = last_meta.get('text', '')
-                last_ts = float(last_meta.get('ts', 0.0))
-                # Stronger suppress window (3s) and normalized comparison
-                if normalized_text and (normalized_text == ' '.join(last_text.strip().lower().split())) and (now_epoch - last_ts) <= 3.0:
-                    print(f"🛑 Duplicate STT (<=3s) suppressed: '{speech_result}'")
-                    keep_listening = VoiceResponse()
-                    # Stay in realtime processing path to avoid rerunning /voice greeting
-                    keep_listening.redirect(f"/process_speech_realtime?interruption=simple")
-                    return str(keep_listening)
-
-                # Track last response time as well to avoid back-to-back loops
-                last_resp_ts = float(bot_app.call_language[call_sid].get('last_response_ts', 0.0))
-                if (now_epoch - last_resp_ts) <= 1.2 and normalized_text == last_text.strip().lower():
-                    print(f"🛑 Rapid repeat suppressed (<=1.2s): '{speech_result}'")
-                    keep_listening = VoiceResponse()
-                    keep_listening.redirect(f"/process_speech_realtime?interruption=simple")
-                    return str(keep_listening)
-
-                # Save meta early to block concurrent duplicates
-                bot_app.call_language[call_sid]['last_utterance_meta'] = { 'text': speech_result, 'ts': now_epoch }
-        except Exception as _e:
-            print(f"⚠️ Strong dedup error (ignored): {_e}")
-
+        # Add request deduplication to prevent duplicate processing
+        request_id = request.form.get('CallSid', '') + '_' + str(time.time())[:13]
+        if hasattr(bot_app, 'recent_requests'):
+            if request_id in bot_app.recent_requests:
+                print(f"⚠️ Skipping duplicate request: {request_id}")
+                response = VoiceResponse()
+                return str(response)
+            bot_app.recent_requests.add(request_id)
+            # Cleanup old entries (keep last 100)
+            if len(bot_app.recent_requests) > 100:
+                bot_app.recent_requests = set(list(bot_app.recent_requests)[-50:])
+        else:
+            bot_app.recent_requests = {request_id}
+        
         # Enhanced STT confidence check with dynamic handling
         speech_confidence = float(request.form.get('Confidence', '0.0'))
         print(f"🎤 Speech confidence: {speech_confidence:.2f}")
-        
-        # Suppress duplicate transcripts arriving back-to-back (Twilio retries/pacing)
-        try:
-            from time import time as _now
-            if call_sid:
-                if call_sid not in bot_app.call_language:
-                    bot_app.call_language[call_sid] = {}
-                if isinstance(bot_app.call_language[call_sid], dict):
-                    last_meta = bot_app.call_language[call_sid].get('last_utterance_meta') or {}
-                    last_text = last_meta.get('text', '')
-                    last_ts = last_meta.get('ts', 0.0)
-                    now_ts = _now()
-                    is_duplicate = (speech_result.strip() == last_text.strip()) and ((now_ts - last_ts) <= 2.0)
-                    if is_duplicate:
-                        print(f"🛑 Suppressing duplicate transcript within 2s: '{speech_result}'")
-                        # Keep listening without responding
-                        keep_listening = VoiceResponse()
-                        keep_listening.redirect(f"/voice?realtime=true&interruption=simple&media_streams=true")
-                        return str(keep_listening)
-                    # Record current utterance meta
-                    bot_app.call_language[call_sid]['last_utterance_meta'] = { 'text': speech_result, 'ts': now_ts }
-        except Exception as _e:
-            print(f"⚠️ Duplicate suppression check failed: {_e}")
 
         # Dynamic confidence-based processing
-        if speech_confidence < 0.2:
+        if speech_confidence < 0.15:
             print(f"⚠️ Very low confidence speech: '{speech_result}' - confidence: {speech_confidence}")
             # For very low confidence, ask for clarification
             response = VoiceResponse()
@@ -870,7 +882,7 @@ def create_voice_bot_server():
                 response.say("Sorry, I didn't catch that. Could you please repeat?", voice=os.getenv('TWILIO_VOICE_EN', 'Polly.Joanna'), language='en-IN')
             response.redirect(f"/voice?realtime=true&interruption=simple&media_streams=true")
             return str(response)
-        elif speech_confidence < 0.5:
+        elif speech_confidence < 0.35:
             print(f"⚠️ Low confidence speech: '{speech_result}' - confidence: {speech_confidence}")
             # Try to clean up common STT errors
             cleaned_speech = clean_speech_result(speech_result)
@@ -988,6 +1000,23 @@ def create_voice_bot_server():
                     history = bot_app.call_language[call_sid].get('conversation_history', [])
                     transcript = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
                 
+                # Track AIDA call outcome if enabled
+                if hasattr(bot_app, 'aida_mode') and bot_app.aida_mode and hasattr(bot_app, 'aida_analytics'):
+                    aida_context = bot_app.gpt.get_aida_context()
+                    if aida_context:
+                        final_stage = aida_context.get_current_stage().value
+                        outcome = 'converted' if final_stage == 'action' else 'qualified' if final_stage in ['interest', 'desire'] else 'not_qualified'
+                        
+                        bot_app.aida_analytics.track_call_outcome(
+                            call_sid, 
+                            outcome, 
+                            final_stage, 
+                            duration,
+                            aida_context.product_data.get('_id') if aida_context.product_data else None
+                        )
+                        
+                        print(f"📊 AIDA call outcome tracked: {outcome} (final stage: {final_stage})")
+                
                 dashboard.log_call_end({
                     'call_sid': call_sid,
                     'status': 'success',
@@ -1048,15 +1077,16 @@ def create_voice_bot_server():
                     sales_context.update_stage(new_stage, f"User input analysis: {stage_triggers[0]}")
                     analytics_tracker.update_conversion_stage(new_stage.value)
                 
-                # Update BANT scores if qualification signals detected
-                bant_signals = user_analysis.get('bant_signals', {})
-                for bant_type, signals in bant_signals.items():
-                    if signals:  # If signals detected, increase score
-                        current_score = sales_context.bant_data[bant_type]['score']
-                        new_score = min(10, current_score + len(signals))
-                        sales_context.update_bant_score(bant_type, new_score, f"Detected signals: {', '.join(signals)}")
+                # Add automatic progression if stuck in greeting
+                if sales_context.current_stage == ConversationStage.GREETING:
+                    interaction_count = len(sales_context.stage_history)
+                    if interaction_count >= 2:  # After 2 interactions, move to qualification
+                        sales_context.update_stage(ConversationStage.QUALIFICATION, 
+                                                   "Auto-progression from greeting")
+                        analytics_tracker.update_conversion_stage('qualification')
+                        print("🔄 Auto-progressed to qualification stage")
                 
-                print(f"📊 Sales Analysis - Stage: {sales_context.current_stage.value}, BANT Score: {sales_context.get_bant_score()}")
+                print(f"📊 Sales Analysis - Stage: {sales_context.current_stage.value}")
                 
             except Exception as e:
                 print(f"❌ Sales AI integration error: {e}")
@@ -1455,6 +1485,20 @@ def create_voice_bot_server():
                             print("🎯 Using Sales AI Brain for response generation")
                             bot_response = active_sales_brain.ask(speech_result, detected_language)
                             
+                            # Synchronize sales AI brain stage with sales context manager
+                            if call_sid in sales_context_managers:
+                                sales_context = sales_context_managers[call_sid]
+                                # Update sales context manager stage to match sales AI brain stage
+                                if hasattr(active_sales_brain, 'conversation_stage'):
+                                    try:
+                                        from src.sales_context_manager import ConversationStage
+                                        new_stage = ConversationStage(active_sales_brain.conversation_stage)
+                                        if sales_context.current_stage != new_stage:
+                                            sales_context.update_stage(new_stage, f"Synced from Sales AI Brain: {active_sales_brain.conversation_stage}")
+                                            print(f"🔄 Synced stage: {sales_context.current_stage.value}")
+                                    except Exception as e:
+                                        print(f"⚠️ Stage sync error: {e}")
+                            
                             # Track analytics
                             if call_sid in sales_analytics_trackers:
                                 analytics_tracker = sales_analytics_trackers[call_sid]
@@ -1677,6 +1721,14 @@ def create_voice_bot_server():
                 elif interruption_mode == 'simple' and SIMPLE_INTERRUPTION_AVAILABLE:
                     print("🎧 Using simple interruption system for response")
                     from src.simple_interruption import create_interruption_response
+                    # Record response time
+                    try:
+                        if call_sid:
+                            if call_sid not in bot_app.call_language or not isinstance(bot_app.call_language.get(call_sid), dict):
+                                bot_app.call_language[call_sid] = {}
+                            bot_app.call_language[call_sid]['last_response_ts'] = time.time()
+                    except Exception:
+                        pass
                     return str(create_interruption_response(call_sid, bot_response, detected_language))
                 else:
                     # Generate chunked response for better interruption handling
@@ -1725,8 +1777,15 @@ def create_voice_bot_server():
                     if call_sid:
                         bot_app.call_language[call_sid]['is_bot_speaking'] = False
                 
-                # Add a brief pause after speaking for natural conversation flow
+                 # Add a brief pause after speaking for natural conversation flow
                 response.pause(length=0.2)
+                try:
+                    if call_sid:
+                        if call_sid not in bot_app.call_language or not isinstance(bot_app.call_language.get(call_sid), dict):
+                            bot_app.call_language[call_sid] = {}
+                        bot_app.call_language[call_sid]['last_response_ts'] = time.time()
+                except Exception:
+                    pass
                 
             except Exception as e:
                 print(f"❌ Real-time processing error: {e}")

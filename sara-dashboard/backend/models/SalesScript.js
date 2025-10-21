@@ -50,7 +50,7 @@ const salesScriptSchema = new mongoose.Schema({
   },
   conditions: {
     triggers: [String], // Keywords that trigger this script
-    minQualificationScore: Number, // Minimum BANT score required
+    minQualificationScore: Number, // Minimum qualification score required
     maxCallDuration: Number, // Maximum call duration in seconds
     objectionsRequired: [String] // Objections that must be present
   },

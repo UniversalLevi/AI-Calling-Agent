@@ -22,7 +22,6 @@ Meet **Sara**, your intelligent AI sales assistant that can make and receive pho
 - **📊 SPIN Selling** - Systematic qualification using Situation, Problem, Implication, Need-payoff questions
 - **🤝 Consultative Approach** - Build trust and rapport with empathy-driven conversations
 - **🎯 Challenger Techniques** - Teach value, tailor solutions, and take control of conversations
-- **📈 BANT Qualification** - Automatic lead scoring based on Budget, Authority, Need, Timeline
 - **🛡️ Objection Handling** - Pre-configured responses to common sales objections
 - **📊 Real-time Analytics** - Track sentiment, talk-listen ratio, conversion stages, and keywords
 - **🎛️ Admin Dashboard** - Manage products, scripts, objections, and sales techniques
@@ -50,9 +49,9 @@ Sara's Sales AI system transforms the basic calling bot into a sophisticated sal
 - **Consultative Selling**: Build trust through empathy, active listening, and understanding customer needs
 - **Challenger Selling**: Teach customers new insights, tailor solutions, and take control of conversations
 
-### 📊 Lead Qualification (BANT)
-- **Budget**: Assess customer's financial capacity
-- **Authority**: Identify decision-makers
+### 📊 Lead Qualification
+- **Needs Assessment**: Understand customer requirements and pain points
+- **Authority Identification**: Identify decision-makers and influencers
 - **Need**: Understand customer pain points and requirements
 - **Timeline**: Determine urgency and buying timeline
 
@@ -185,7 +184,7 @@ That's it! The bot will:
 - **main.py** - Complete launcher and server (the only file you need to run)
 - **src/mixed_ai_brain.py** - AI brain with language-aware responses
 - **src/sales_ai_brain.py** - Sales AI brain with SPIN/Consultative/Challenger techniques
-- **src/sales_context_manager.py** - Manages sales conversation state and BANT tracking
+- **src/sales_context_manager.py** - Manages sales conversation state and context tracking
 - **src/sales_analytics_tracker.py** - Real-time sales analytics and performance tracking
 - **src/mixed_stt.py** - Speech-to-text with Hindi/English support
 - **src/enhanced_hindi_tts.py** - High-quality Hindi text-to-speech
@@ -288,7 +287,7 @@ WHISPER_MODEL_SIZE=base     # Whisper model (tiny/small/base/medium/large)
 SALES_MODE_ENABLED=true              # Enable sales AI features
 ACTIVE_PRODUCT_ID=product_id         # Current product being sold
 SALES_API_URL=http://localhost:5000  # Dashboard API endpoint
-QUALIFICATION_THRESHOLD=20           # Minimum BANT score to proceed
+QUALIFICATION_THRESHOLD=20           # Minimum qualification score to proceed
 SENTIMENT_ANALYSIS_ENABLED=true      # Enable real-time sentiment tracking
 TALK_LISTEN_TARGET_RATIO=0.4         # Target AI talk percentage (40%)
 SALES_CACHE_DURATION=300            # Cache duration in seconds

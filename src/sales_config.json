@@ -26,7 +26,6 @@
     }
   },
   "qualification_settings": {
-    "bant_threshold": 20,
     "auto_qualification": true,
     "qualification_timeout": 120
   },
@@ -51,6 +50,50 @@
       "closing": 60
     }
   },
+  "scripts": [
+    {
+      "scriptType": "greeting",
+      "language": "en",
+      "technique": "Consultative",
+      "content": "Hello! This is Sara from our service. I'd like to help you with something special today. Do you have a few minutes to talk?",
+      "isActive": true
+    },
+    {
+      "scriptType": "greeting",
+      "language": "hi",
+      "technique": "Consultative", 
+      "content": "Namaste! Main Sara hun aur main aapko kuch special help kar sakti hun. Kya aapke paas thoda time hai baat karne ke liye?",
+      "isActive": true
+    },
+    {
+      "scriptType": "qualification",
+      "language": "en",
+      "technique": "SPIN",
+      "content": "Great! I'd love to tell you about our amazing service. Before I do, can you tell me what you're looking for in a service like ours?",
+      "isActive": true
+    },
+    {
+      "scriptType": "qualification", 
+      "language": "hi",
+      "technique": "SPIN",
+      "content": "Bahut achha! Main aapko hamari amazing service ke baare mein bata sakti hun. Pehle yeh bataiye ki aap hamari service mein kya dhundh rahe hain?",
+      "isActive": true
+    },
+    {
+      "scriptType": "presentation",
+      "language": "en", 
+      "technique": "Challenger",
+      "content": "Perfect! Our service offers exactly what you need. Let me show you how it can solve your problems and save you time and money.",
+      "isActive": true
+    },
+    {
+      "scriptType": "presentation",
+      "language": "hi",
+      "technique": "Challenger", 
+      "content": "Perfect! Hamari service exactly wahi offer karti hai jo aapko chahiye. Main aapko dikhata hun ki yeh aapki problems kaise solve kar sakti hai.",
+      "isActive": true
+    }
+  ],
   "dashboard_integration": {
     "api_url": "http://localhost:5000",
     "cache_duration": 300,

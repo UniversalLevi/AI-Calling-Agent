@@ -4,7 +4,6 @@
  */
 
 const SalesAnalytics = require('../models/SalesAnalytics');
-const LeadQualification = require('../models/LeadQualification');
 const SalesScript = require('../models/SalesScript');
 const ObjectionHandler = require('../models/ObjectionHandler');
 const SalesTechnique = require('../models/SalesTechnique');
@@ -293,25 +292,6 @@ const getCallQuality = async (req, res) => {
   }
 };
 
-// Lead Qualification Statistics
-const getQualificationStats = async (req, res) => {
-  try {
-    const { startDate, endDate } = req.query;
-    const stats = await LeadQualification.getQualificationStats(startDate, endDate);
-    
-    res.json({
-      success: true,
-      data: stats
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching qualification stats',
-      error: error.message
-    });
-  }
-};
-
 // Real-time Call Monitoring
 const getRealTimeMonitoring = async (req, res) => {
   try {
@@ -342,14 +322,12 @@ const getDashboardSummary = async (req, res) => {
       funnelData,
       objectionData,
       techniqueData,
-      qualificationStats,
       callQuality,
       talkListenRatio
     ] = await Promise.all([
       SalesAnalytics.getConversionFunnel(startDate, endDate),
       SalesAnalytics.getObjectionAnalysis(startDate, endDate),
       SalesAnalytics.getTechniquePerformance(startDate, endDate),
-      LeadQualification.getQualificationStats(startDate, endDate),
       SalesAnalytics.aggregate([
         { $match: startDate && endDate ? {
           createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }
@@ -370,7 +348,6 @@ const getDashboardSummary = async (req, res) => {
         conversionFunnel: funnelData,
         objectionAnalysis: objectionData,
         techniquePerformance: techniqueData,
-        qualificationStats,
         callQuality: callQuality[0]?.averageQuality || 0,
         talkListenRatio: talkListenRatio[0]?.averageRatio || 0
       }
@@ -392,7 +369,6 @@ module.exports = {
   getTalkListenRatio,
   getKeywordSuccess,
   getCallQuality,
-  getQualificationStats,
   getRealTimeMonitoring,
   getDashboardSummary
 };

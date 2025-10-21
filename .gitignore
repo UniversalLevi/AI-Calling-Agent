@@ -122,3 +122,5 @@ dist/
 # MongoDB data
 data/
 mongodb/
+
+.vscode

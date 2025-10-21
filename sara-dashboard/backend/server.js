@@ -12,12 +12,16 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 require('dotenv').config();
 
+// Import database connection
+const connectDB = require('./config/db');
+
 // Import routes
 const callRoutes = require('./routes/callRoutes');
 const userRoutes = require('./routes/userRoutes');
 const systemRoutes = require('./routes/systemRoutes');
 const salesRoutes = require('./routes/salesRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+const aidaRoutes = require('./routes/aidaRoutes');
 
 // Import middleware
 const authMiddleware = require('./middleware/authMiddleware');
@@ -103,18 +107,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Static files
 app.use('/uploads', express.static('uploads'));
 
-// Database connection
-mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/sara-dashboard', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => {
-  console.log('✅ Connected to MongoDB');
-})
-.catch((error) => {
-  console.error('❌ MongoDB connection error:', error);
-  process.exit(1);
-});
+// Connect to database
+connectDB();
 
 // Socket.io connection handling
 socketHandler(io);
@@ -128,6 +122,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/aida', aidaRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

@@ -2,7 +2,7 @@
 Sales Context Manager - Conversation State and Funnel Progression
 ===============================================================
 
-This module manages conversation state, sales funnel progression, and BANT tracking
+This module manages conversation state, sales funnel progression, and context tracking
 for the sales AI system.
 """
 
@@ -31,12 +31,6 @@ class SalesContextManager:
         self.current_stage = ConversationStage.GREETING
         self.stage_history = []
         self.stage_timings = {}
-        self.bant_data = {
-            'budget': {'score': 0, 'notes': '', 'amount': None, 'timeframe': None},
-            'authority': {'score': 0, 'notes': '', 'decision_maker': False, 'influence_level': 'unknown'},
-            'need': {'score': 0, 'notes': '', 'pain_points': [], 'urgency_level': 'medium'},
-            'timeline': {'score': 0, 'notes': '', 'decision_date': None, 'urgency': 'flexible'}
-        }
         self.conversation_context = {
             'questions_asked': [],
             'objections_encountered': [],
@@ -102,7 +96,6 @@ class SalesContextManager:
         
         analysis = {
             'stage_triggers': self._detect_stage_triggers(user_lower),
-            'bant_signals': self._detect_bant_signals(user_lower),
             'objections': self._detect_objections(user_lower),
             'buying_signals': self._detect_buying_signals(user_lower),
             'urgency_level': self._detect_urgency_level(user_lower),
@@ -135,28 +128,6 @@ class SalesContextManager:
             triggers.append('closing')
         
         return triggers
-    
-    def _detect_bant_signals(self, user_lower: str) -> Dict:
-        """Detect BANT qualification signals"""
-        signals = {'budget': [], 'authority': [], 'need': [], 'timeline': []}
-        
-        # Budget signals
-        budget_keywords = ['budget', 'price', 'cost', 'afford', 'expensive', 'cheap', 'paisa', 'budget']
-        signals['budget'] = [word for word in budget_keywords if word in user_lower]
-        
-        # Authority signals
-        authority_keywords = ['decision', 'manager', 'boss', 'approve', 'permission', 'boss', 'manager']
-        signals['authority'] = [word for word in authority_keywords if word in user_lower]
-        
-        # Need signals
-        need_keywords = ['need', 'want', 'require', 'problem', 'issue', 'challenge', 'zaroorat', 'chahiye']
-        signals['need'] = [word for word in need_keywords if word in user_lower]
-        
-        # Timeline signals
-        timeline_keywords = ['when', 'timeline', 'schedule', 'urgent', 'immediate', 'soon', 'jaldi', 'urgent']
-        signals['timeline'] = [word for word in timeline_keywords if word in user_lower]
-        
-        return signals
     
     def _detect_objections(self, user_lower: str) -> List[str]:
         """Detect objections in user input"""
@@ -256,23 +227,6 @@ class SalesContextManager:
         
         self.last_activity_time = time.time()
     
-    def update_bant_score(self, bant_type: str, score: int, notes: str = ""):
-        """Update BANT score for specific type"""
-        if bant_type in self.bant_data:
-            self.bant_data[bant_type]['score'] = score
-            if notes:
-                self.bant_data[bant_type]['notes'] = notes
-            
-            print(f"📊 Updated {bant_type} score: {score}")
-    
-    def get_bant_score(self) -> int:
-        """Get total BANT score"""
-        return sum(data['score'] for data in self.bant_data.values())
-    
-    def is_qualified(self, threshold: int = 20) -> bool:
-        """Check if lead is qualified based on BANT score"""
-        return self.get_bant_score() >= threshold
-    
     def get_next_action(self) -> Dict:
         """Determine next best action based on current context"""
         actions = []
@@ -286,28 +240,24 @@ class SalesContextManager:
             })
         
         elif self.current_stage == ConversationStage.QUALIFICATION:
-            # Check which BANT elements need more information
-            for bant_type, data in self.bant_data.items():
-                if data['score'] < 5:  # Low score, need more info
-                    actions.append({
-                        'action': f'qualify_{bant_type}',
-                        'priority': 'high',
-                        'description': f'Gather more {bant_type} information'
-                    })
+            # Focus on understanding customer needs and pain points
+            actions.append({
+                'action': 'discover_needs',
+                'priority': 'high',
+                'description': 'Ask questions to understand customer needs and challenges'
+            })
+            actions.append({
+                'action': 'assess_urgency',
+                'priority': 'medium',
+                'description': 'Determine timeline and urgency for solution'
+            })
         
         elif self.current_stage == ConversationStage.PRESENTATION:
-            if self.is_qualified():
-                actions.append({
-                    'action': 'present_solution',
-                    'priority': 'high',
-                    'description': 'Present product solution tailored to their needs'
-                })
-            else:
-                actions.append({
-                    'action': 'continue_qualification',
-                    'priority': 'high',
-                    'description': 'Continue qualification before presentation'
-                })
+            actions.append({
+                'action': 'present_solution',
+                'priority': 'high',
+                'description': 'Present product solution tailored to their needs'
+            })
         
         elif self.current_stage == ConversationStage.OBJECTION:
             unresolved_objections = [obj for obj in self.conversation_context['objections_encountered'] 
@@ -346,9 +296,7 @@ class SalesContextManager:
         return {
             'primary_action': actions[0] if actions else {'action': 'continue_conversation', 'priority': 'low'},
             'all_actions': actions,
-            'current_stage': self.current_stage.value,
-            'bant_score': self.get_bant_score(),
-            'is_qualified': self.is_qualified()
+            'current_stage': self.current_stage.value
         }
     
     def get_conversation_summary(self) -> Dict:
@@ -361,9 +309,6 @@ class SalesContextManager:
             'current_stage': self.current_stage.value,
             'stage_history': self.stage_history,
             'stage_timings': self.stage_timings,
-            'bant_data': self.bant_data,
-            'bant_score': self.get_bant_score(),
-            'is_qualified': self.is_qualified(),
             'conversation_context': self.conversation_context,
             'duration': duration,
             'call_start_time': self.call_start_time,
@@ -373,7 +318,6 @@ class SalesContextManager:
     def should_trigger_upsell(self) -> bool:
         """Determine if upsell should be triggered"""
         return (self.current_stage == ConversationStage.CONVERTED and 
-                self.is_qualified() and 
                 len(self.conversation_context['buying_signals']) >= 2)
     
     def get_upsell_opportunities(self) -> List[str]:

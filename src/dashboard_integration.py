@@ -32,8 +32,16 @@ class SalesDashboardIntegration:
         self.cache_duration = int(os.getenv('SALES_CACHE_DURATION', '300'))  # 5 minutes
         self.cache = {}
         self.cache_timestamps = {}
+        # Optional JWT for protected endpoints (fixes 401 in dev/prod)
+        self.jwt_token = os.getenv('DASHBOARD_JWT') or os.getenv('DASHBOARD_API_TOKEN') or os.getenv('DASHBOARD_AUTH_TOKEN')
         
         print(f"🔗 Sales Dashboard Integration initialized: {self.dashboard_url}")
+    def _auth_headers(self) -> Dict[str, str]:
+        """Return Authorization header if JWT token is configured."""
+        if self.jwt_token:
+            return { 'Authorization': f'Bearer {self.jwt_token}' }
+        return {}
+
         # Optional: subscribe to websocket updates for instant voice settings
         try:
             if websocket_client:
@@ -76,7 +84,11 @@ class SalesDashboardIntegration:
         if cached:
             return cached
         try:
-            response = requests.get(f"{self.dashboard_url}/api/system/voice-settings", timeout=self.api_timeout)
+            response = requests.get(
+                f"{self.dashboard_url}/api/system/voice-settings",
+                headers=self._auth_headers(),
+                timeout=self.api_timeout
+            )
             if response.status_code == 200:
                 data = response.json().get('data', {})
                 self._cache_data(cache_key, data)
@@ -96,6 +108,7 @@ class SalesDashboardIntegration:
         try:
             response = requests.get(
                 f"{self.dashboard_url}/api/sales/active-campaign/{product_id}",
+                headers=self._auth_headers(),
                 timeout=self.api_timeout
             )
             
@@ -126,6 +139,7 @@ class SalesDashboardIntegration:
             response = requests.get(
                 f"{self.dashboard_url}/api/sales/scripts",
                 params=params,
+                headers=self._auth_headers(),
                 timeout=self.api_timeout
             )
             
@@ -156,6 +170,7 @@ class SalesDashboardIntegration:
             response = requests.get(
                 f"{self.dashboard_url}/api/sales/objections",
                 params=params,
+                headers=self._auth_headers(),
                 timeout=self.api_timeout
             )
             
@@ -177,6 +192,7 @@ class SalesDashboardIntegration:
             response = requests.post(
                 f"{self.dashboard_url}/api/sales/objections/detect",
                 json={'userInput': user_input, 'language': language},
+                headers=self._auth_headers(),
                 timeout=self.api_timeout
             )
             
@@ -195,6 +211,7 @@ class SalesDashboardIntegration:
         try:
             response = requests.get(
                 f"{self.dashboard_url}/api/sales/objections/{objection_type}/{language}",
+                headers=self._auth_headers(),
                 timeout=self.api_timeout
             )
             
@@ -208,32 +225,13 @@ class SalesDashboardIntegration:
             print(f"❌ Error getting objection response: {e}")
             return None
     
-    def update_lead_qualification(self, call_id: str, bant_data: Dict) -> bool:
-        """Update lead qualification data"""
-        try:
-            response = requests.put(
-                f"{self.dashboard_url}/api/sales/qualification/{call_id}",
-                json=bant_data,
-                timeout=self.api_timeout
-            )
-            
-            if response.status_code == 200:
-                print(f"✅ Lead qualification updated for call: {call_id}")
-                return True
-            else:
-                print(f"❌ Failed to update lead qualification: {response.status_code}")
-                return False
-                
-        except Exception as e:
-            print(f"❌ Error updating lead qualification: {e}")
-            return False
-    
     def save_sales_analytics(self, analytics_data: Dict) -> bool:
         """Save sales analytics data"""
         try:
             response = requests.post(
                 f"{self.dashboard_url}/api/analytics/save",
                 json=analytics_data,
+                headers=self._auth_headers(),
                 timeout=self.api_timeout
             )
             
@@ -260,6 +258,7 @@ class SalesDashboardIntegration:
             response = requests.get(
                 f"{self.dashboard_url}/api/analytics/conversion-funnel",
                 params=params,
+                headers=self._auth_headers(),
                 timeout=self.api_timeout
             )
             
@@ -285,6 +284,7 @@ class SalesDashboardIntegration:
             response = requests.get(
                 f"{self.dashboard_url}/api/analytics/objection-analysis",
                 params=params,
+                headers=self._auth_headers(),
                 timeout=self.api_timeout
             )
             
@@ -310,6 +310,7 @@ class SalesDashboardIntegration:
             response = requests.get(
                 f"{self.dashboard_url}/api/analytics/technique-performance",
                 params=params,
+                headers=self._auth_headers(),
                 timeout=self.api_timeout
             )
             
@@ -335,6 +336,7 @@ class SalesDashboardIntegration:
             response = requests.get(
                 f"{self.dashboard_url}/api/analytics/dashboard-summary",
                 params=params,
+                headers=self._auth_headers(),
                 timeout=self.api_timeout
             )
             
@@ -349,31 +351,48 @@ class SalesDashboardIntegration:
             return None
     
     def log_call_start(self, call_data: Dict) -> bool:
-        """Log call start to dashboard"""
+        """Log call start to dashboard with fallback"""
         try:
+            # Ensure required fields for CallLog model
+            if 'callId' not in call_data:
+                call_data['callId'] = call_data.get('call_sid', 'unknown')
+            if 'type' not in call_data:
+                call_data['type'] = 'outbound'
+            if 'caller' not in call_data:
+                call_data['caller'] = call_data.get('from', 'unknown')
+            if 'receiver' not in call_data:
+                call_data['receiver'] = call_data.get('to', 'unknown')
+            if 'startTime' not in call_data:
+                call_data['startTime'] = datetime.utcnow().isoformat()
+            
             response = requests.post(
-                f"{self.dashboard_url}/api/calls/start",
+                f"{self.dashboard_url}/api/calls/",
                 json=call_data,
+                headers=self._auth_headers(),
                 timeout=self.api_timeout
             )
             
-            if response.status_code == 200:
-                print(f"✅ Call start logged: {call_data.get('call_sid', 'unknown')}")
+            if response.status_code in [200, 201]:
+                print(f"✅ Call start logged: {call_data.get('callId', 'unknown')}")
                 return True
             else:
-                print(f"❌ Failed to log call start: {response.status_code}")
+                print(f"⚠️ Dashboard call log failed: {response.status_code}")
+                if response.status_code == 400:
+                    print(f"📝 Request data: {call_data}")
+                    print(f"📝 Response: {response.text}")
                 return False
-                
         except Exception as e:
-            print(f"❌ Error logging call start: {e}")
+            print(f"⚠️ Dashboard unavailable: {e}")
             return False
     
     def log_call_end(self, call_data: Dict) -> bool:
         """Log call end to dashboard"""
         try:
-            response = requests.post(
-                f"{self.dashboard_url}/api/calls/end",
+            call_sid = call_data.get('call_sid', 'unknown')
+            response = requests.patch(
+                f"{self.dashboard_url}/api/calls/{call_sid}",
                 json=call_data,
+                headers=self._auth_headers(),
                 timeout=self.api_timeout
             )
             
@@ -387,6 +406,31 @@ class SalesDashboardIntegration:
         except Exception as e:
             print(f"❌ Error logging call end: {e}")
             return False
+    
+    def get_active_aida_product(self) -> Optional[Dict]:
+        """Get active AIDA product from dashboard"""
+        try:
+            response = requests.get(
+                f"{self.dashboard_url}/api/aida/active",
+                headers=self._auth_headers(),
+                timeout=self.api_timeout
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success') and data.get('data'):
+                    print(f"✅ Active AIDA product loaded: {data['data'].get('product_name', 'Unknown')}")
+                    return data['data']
+                else:
+                    print("⚠️ No active AIDA product found")
+                    return None
+            else:
+                print(f"⚠️ Failed to fetch active AIDA product: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            print(f"⚠️ Error fetching active AIDA product: {e}")
+            return None
     
     def clear_cache(self):
         """Clear all cached data"""
@@ -411,14 +455,16 @@ class DashboardIntegration:
         self.sales_integration = SalesDashboardIntegration()
     
     def log_call_start(self, call_data: Dict) -> bool:
+        """Log call start - redirect to sales integration"""
         return self.sales_integration.log_call_start(call_data)
     
     def log_call_end(self, call_data: Dict) -> bool:
+        """Log call end - redirect to sales integration"""
         return self.sales_integration.log_call_end(call_data)
     
     def log_call_update(self, call_data: Dict) -> bool:
         # Legacy method - redirect to call end
-        return self.sales_integration.log_call_end(call_data)
+        return self.log_call_end(call_data)
 
 
 # Global instance

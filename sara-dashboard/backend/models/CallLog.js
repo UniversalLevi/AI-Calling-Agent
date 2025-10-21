@@ -70,12 +70,6 @@ const callLogSchema = new mongoose.Schema({
     location: String,
     deviceType: String
   },
-  metadata: {
-    userAgent: String,
-    ipAddress: String,
-    location: String,
-    deviceType: String
-  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -99,7 +93,6 @@ callLogSchema.index({ type: 1, createdAt: -1 });
 // Sales-specific indexes
 callLogSchema.index({ 'salesData.productId': 1, createdAt: -1 });
 callLogSchema.index({ 'salesData.conversationStage': 1, createdAt: -1 });
-callLogSchema.index({ 'salesData.bantScore': -1 });
 callLogSchema.index({ 'salesData.conversionOutcome': 1, createdAt: -1 });
 callLogSchema.index({ 'salesData.callQuality.score': -1 });
 
@@ -130,17 +123,6 @@ callLogSchema.virtual('callAge').get(function() {
   return `${diffDays} days ago`;
 });
 
-// Virtual for sales qualification level
-callLogSchema.virtual('qualificationLevel').get(function() {
-  if (!this.salesData || !this.salesData.bantScore) return 'unqualified';
-  
-  const score = this.salesData.bantScore;
-  if (score >= 30) return 'high';
-  if (score >= 20) return 'medium';
-  if (score >= 10) return 'low';
-  return 'unqualified';
-});
-
 // Virtual for sales summary
 callLogSchema.virtual('salesSummary').get(function() {
   if (!this.salesData) return null;
@@ -148,8 +130,6 @@ callLogSchema.virtual('salesSummary').get(function() {
   return {
     productId: this.salesData.productId,
     conversationStage: this.salesData.conversationStage,
-    bantScore: this.salesData.bantScore,
-    qualificationLevel: this.qualificationLevel,
     objectionsCount: this.salesData.objectionsFaced ? this.salesData.objectionsFaced.length : 0,
     techniquesUsed: this.salesData.techniquesUsed ? this.salesData.techniquesUsed.length : 0,
     sentimentScore: this.salesData.sentimentScore,
@@ -158,18 +138,10 @@ callLogSchema.virtual('salesSummary').get(function() {
   };
 });
 
-// Pre-save middleware to calculate duration and BANT score
+// Pre-save middleware to calculate duration
 callLogSchema.pre('save', function(next) {
   if (this.endTime && this.startTime) {
     this.duration = Math.floor((this.endTime - this.startTime) / 1000);
-  }
-  
-  // Calculate BANT score if breakdown exists
-  if (this.salesData && this.salesData.bantBreakdown) {
-    this.salesData.bantScore = (this.salesData.bantBreakdown.budget || 0) +
-                              (this.salesData.bantBreakdown.authority || 0) +
-                              (this.salesData.bantBreakdown.need || 0) +
-                              (this.salesData.bantBreakdown.timeline || 0);
   }
   
   this.updatedAt = new Date();
@@ -246,7 +218,6 @@ callLogSchema.statics.getDailyTrends = async function(days = 7) {
         convertedCalls: {
           $sum: { $cond: [{ $eq: ['$salesData.conversionOutcome', 'converted'] }, 1, 0] }
         },
-        averageBantScore: { $avg: '$salesData.bantScore' },
         averageCallQuality: { $avg: '$salesData.callQuality.score' }
       }
     },
@@ -276,7 +247,6 @@ callLogSchema.statics.getSalesMetrics = async function(startDate, endDate) {
         convertedCalls: {
           $sum: { $cond: [{ $eq: ['$salesData.conversionOutcome', 'converted'] }, 1, 0] }
         },
-        averageBantScore: { $avg: '$salesData.bantScore' },
         averageCallQuality: { $avg: '$salesData.callQuality.score' },
         averageSentiment: { $avg: '$salesData.sentimentScore' },
         averageTalkListenRatio: { $avg: '$salesData.talkListenRatio.aiRatio' },
@@ -300,7 +270,6 @@ callLogSchema.statics.getSalesMetrics = async function(startDate, endDate) {
   const result = metrics[0] || {
     totalCalls: 0,
     convertedCalls: 0,
-    averageBantScore: 0,
     averageCallQuality: 0,
     averageSentiment: 0,
     averageTalkListenRatio: 0,
@@ -335,8 +304,7 @@ callLogSchema.statics.getStageAnalysis = async function(startDate, endDate) {
         averageDuration: { $avg: '$duration' },
         conversionRate: {
           $avg: { $cond: [{ $eq: ['$salesData.conversionOutcome', 'converted'] }, 1, 0] }
-        },
-        averageBantScore: { $avg: '$salesData.bantScore' }
+        }
       }
     },
     {

@@ -13,7 +13,6 @@ const {
   getTalkListenRatio,
   getKeywordSuccess,
   getCallQuality,
-  getQualificationStats,
   getRealTimeMonitoring,
   getDashboardSummary
 } = require('../controllers/analyticsController');
@@ -26,7 +25,6 @@ router.get('/sentiment-trends', getSentimentTrends);
 router.get('/talk-listen-ratio', getTalkListenRatio);
 router.get('/keyword-success', getKeywordSuccess);
 router.get('/call-quality', getCallQuality);
-router.get('/qualification-stats', getQualificationStats);
 router.get('/real-time-monitoring', getRealTimeMonitoring);
 router.get('/dashboard-summary', getDashboardSummary);
 

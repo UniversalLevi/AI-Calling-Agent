@@ -7,7 +7,6 @@ const Product = require('../models/Product');
 const SalesScript = require('../models/SalesScript');
 const ObjectionHandler = require('../models/ObjectionHandler');
 const SalesTechnique = require('../models/SalesTechnique');
-const LeadQualification = require('../models/LeadQualification');
 const SalesAnalytics = require('../models/SalesAnalytics');
 
 // Product Management
@@ -339,65 +338,6 @@ const getSalesTechniques = async (req, res) => {
   }
 };
 
-// Lead Qualification Management
-const getLeadQualification = async (req, res) => {
-  try {
-    const qualification = await LeadQualification.getByCallId(req.params.callId);
-    
-    if (!qualification) {
-      return res.status(404).json({
-        success: false,
-        message: 'Lead qualification not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: qualification
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching lead qualification',
-      error: error.message
-    });
-  }
-};
-
-const updateLeadQualification = async (req, res) => {
-  try {
-    const { callId } = req.params;
-    const { budget, authority, need, timeline, stage, notes } = req.body;
-
-    let qualification = await LeadQualification.findOne({ callId });
-    
-    if (!qualification) {
-      qualification = new LeadQualification({ callId });
-    }
-
-    if (budget !== undefined) qualification.budget.score = budget;
-    if (authority !== undefined) qualification.authority.score = authority;
-    if (need !== undefined) qualification.need.score = need;
-    if (timeline !== undefined) qualification.timeline.score = timeline;
-    if (stage) qualification.stage = stage;
-    if (notes) qualification.notes = notes;
-
-    await qualification.save();
-
-    res.json({
-      success: true,
-      data: qualification,
-      message: 'Lead qualification updated successfully'
-    });
-  } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error updating lead qualification',
-      error: error.message
-    });
-  }
-};
-
 // Active Campaign Configuration
 const getActiveCampaign = async (req, res) => {
   try {
@@ -455,10 +395,6 @@ module.exports = {
   
   // Sales Technique Management
   getSalesTechniques,
-  
-  // Lead Qualification Management
-  getLeadQualification,
-  updateLeadQualification,
   
   // Campaign Management
   getActiveCampaign

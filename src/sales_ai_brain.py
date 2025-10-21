@@ -30,7 +30,6 @@ class SalesAIBrain(MixedAIBrain):
         self.product_id = product_id or os.getenv('ACTIVE_PRODUCT_ID')
         self.sales_config = {}
         self.conversation_stage = 'greeting'
-        self.bant_scores = {'budget': 0, 'authority': 0, 'need': 0, 'timeline': 0}
         self.objections_faced = []
         self.techniques_used = []
         self.sentiment_history = []
@@ -52,20 +51,26 @@ class SalesAIBrain(MixedAIBrain):
         print(f"🎯 Sales AI Brain initialized for product: {self.product_id}")
     
     def _load_sales_config(self):
-        """Load sales configuration from dashboard API"""
+        """Load sales configuration from dashboard API or local file"""
         try:
             dashboard_url = os.getenv('SALES_API_URL', 'http://localhost:5000')
-            response = requests.get(f"{dashboard_url}/api/sales/active-campaign/{self.product_id}")
+            response = requests.get(f"{dashboard_url}/api/sales/active-campaign/{self.product_id}", timeout=2)
             
             if response.status_code == 200:
                 self.sales_config = response.json()['data']
-                print(f"✅ Sales config loaded: {len(self.sales_config.get('scripts', []))} scripts")
-            else:
-                print(f"⚠️ Failed to load sales config: {response.status_code}")
-                self._load_default_config()
-                
+                print(f"✅ Sales config loaded from API: {len(self.sales_config.get('scripts', []))} scripts")
+                return
         except Exception as e:
-            print(f"❌ Error loading sales config: {e}")
+            print(f"⚠️ Dashboard unavailable, using local config: {e}")
+        
+        # Load from local JSON file
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), 'sales_config.json')
+            with open(config_path, 'r') as f:
+                self.sales_config = json.load(f)
+            print(f"✅ Sales config loaded from file")
+        except Exception as e:
+            print(f"❌ Error loading local config: {e}")
             self._load_default_config()
     
     def _load_default_config(self):
@@ -175,19 +180,28 @@ class SalesAIBrain(MixedAIBrain):
     def _update_conversation_stage(self, user_text: str, context: Dict):
         """Update conversation stage based on context"""
         if self.conversation_stage == 'greeting':
-            if context['qualification_signals'] or len(user_text.split()) > 5:
+            # Progress from greeting more easily - any meaningful response
+            if (context['qualification_signals'] or 
+                context['buying_signals'] or 
+                len(user_text.split()) > 2 or  # Reduced from 5 to 2 words
+                any(word in user_text.lower() for word in ['hello', 'hi', 'namaste', 'yes', 'okay', 'tell', 'batao', 'jaise'])):
                 self.conversation_stage = 'qualification'
+                print(f"🔄 Stage progressed: greeting -> qualification")
         elif self.conversation_stage == 'qualification':
             if context['buying_signals'] or 'tell me more' in user_text.lower():
                 self.conversation_stage = 'presentation'
+                print(f"🔄 Stage progressed: qualification -> presentation")
         elif self.conversation_stage == 'presentation':
             if context['objection_signals']:
                 self.conversation_stage = 'objection'
+                print(f"🔄 Stage progressed: presentation -> objection")
             elif context['buying_signals']:
                 self.conversation_stage = 'closing'
+                print(f"🔄 Stage progressed: presentation -> closing")
         elif self.conversation_stage == 'objection':
             if context['buying_signals']:
                 self.conversation_stage = 'closing'
+                print(f"🔄 Stage progressed: objection -> closing")
     
     def _detect_objections(self, user_text: str, language: str) -> List[str]:
         """Detect objections in user input"""
@@ -350,7 +364,6 @@ class SalesAIBrain(MixedAIBrain):
 SALES CONTEXT:
 - Product: {self.sales_config.get('product', {}).get('name', 'our service')}
 - Current Stage: {self.conversation_stage}
-- BANT Scores: {self.bant_scores}
 - Buying Signals: {context['buying_signals']}
 - Objection Signals: {context['objection_signals']}
 
@@ -454,7 +467,6 @@ RESPOND AS A SALES PROFESSIONAL WITH THESE TECHNIQUES.
         return {
             'product_id': self.product_id,
             'conversation_stage': self.conversation_stage,
-            'bant_scores': self.bant_scores,
             'objections_faced': self.objections_faced,
             'techniques_used': self.techniques_used,
             'sentiment_history': self.sentiment_history,
@@ -462,20 +474,6 @@ RESPOND AS A SALES PROFESSIONAL WITH THESE TECHNIQUES.
             'duration': duration,
             'call_start_time': self.call_start_time
         }
-    
-    def update_bant_score(self, bant_type: str, score: int):
-        """Update BANT qualification score"""
-        if bant_type in self.bant_scores:
-            self.bant_scores[bant_type] = score
-            print(f"📊 Updated {bant_type} score: {score}")
-    
-    def get_qualification_score(self) -> int:
-        """Get total BANT qualification score"""
-        return sum(self.bant_scores.values())
-    
-    def is_qualified(self, threshold: int = 20) -> bool:
-        """Check if lead is qualified based on BANT score"""
-        return self.get_qualification_score() >= threshold
 
 
 # Backward compatibility

@@ -47,10 +47,6 @@ router.get('/objections/:objectionType/:language', getObjectionResponse);
 // Sales Technique Management Routes
 router.get('/techniques', getSalesTechniques);
 
-// Lead Qualification Management Routes
-router.get('/qualification/:callId', getLeadQualification);
-router.put('/qualification/:callId', updateLeadQualification);
-
 // Campaign Management Routes
 router.get('/active-campaign/:productId', getActiveCampaign);
 
