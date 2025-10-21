@@ -9,26 +9,13 @@ const ProductManager = () => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    category: 'hotel',
-    price: 0,
-    currency: 'USD',
-    features: [],
+    price: '',
+    key_features: [],
+    selling_points: [],
+    common_objections: [],
     faqs: [],
-    targetAudience: {
-      demographics: { ageRange: '', incomeLevel: '', location: '' },
-      painPoints: [],
-      buyingMotivations: []
-    },
-    competitorComparison: [],
-    salesPitch: {
-      opening: '',
-      valueProposition: '',
-      urgencyFactors: [],
-      closingPhrases: []
-    },
-    isActive: true,
-    priority: 1,
-    tags: []
+    target_audience: '',
+    custom_fields: []
   });
 
   useEffect(() => {
@@ -91,15 +78,15 @@ const ProductManager = () => {
     }
   };
 
-  const handleSetActive = async (productId) => {
+  const handleActivate = async (productId) => {
     try {
-      const response = await fetch(`/api/sales/products/${productId}/activate`, { method: 'PATCH' });
+      const response = await fetch(`/api/sales/products/${productId}/activate`, { method: 'POST' });
       const result = await response.json();
       if (result.success) {
         fetchProducts();
       }
     } catch (error) {
-      console.error('Error setting active product:', error);
+      console.error('Error activating product:', error);
     }
   };
 
@@ -113,51 +100,56 @@ const ProductManager = () => {
     setFormData({
       name: '',
       description: '',
-      category: 'hotel',
-      price: 0,
-      currency: 'USD',
-      features: [],
+      price: '',
+      key_features: [],
+      selling_points: [],
+      common_objections: [],
       faqs: [],
-      targetAudience: {
-        demographics: { ageRange: '', incomeLevel: '', location: '' },
-        painPoints: [],
-        buyingMotivations: []
-      },
-      competitorComparison: [],
-      salesPitch: {
-        opening: '',
-        valueProposition: '',
-        urgencyFactors: [],
-        closingPhrases: []
-      },
-      isActive: true,
-      priority: 1,
-      tags: []
+      target_audience: '',
+      custom_fields: []
     });
   };
 
-  const addFeature = () => {
+  const addKeyFeature = () => {
     setFormData({
       ...formData,
-      features: [...formData.features, { name: '', description: '', benefit: '' }]
+      key_features: [...formData.key_features, '']
     });
   };
 
-  const updateFeature = (index, field, value) => {
-    const newFeatures = [...formData.features];
-    newFeatures[index][field] = value;
-    setFormData({ ...formData, features: newFeatures });
+  const updateKeyFeature = (index, value) => {
+    const newFeatures = [...formData.key_features];
+    newFeatures[index] = value;
+    setFormData({ ...formData, key_features: newFeatures });
   };
 
-  const removeFeature = (index) => {
-    const newFeatures = formData.features.filter((_, i) => i !== index);
-    setFormData({ ...formData, features: newFeatures });
+  const removeKeyFeature = (index) => {
+    const newFeatures = formData.key_features.filter((_, i) => i !== index);
+    setFormData({ ...formData, key_features: newFeatures });
+  };
+
+  const addSellingPoint = () => {
+    setFormData({
+      ...formData,
+      selling_points: [...formData.selling_points, '']
+    });
+  };
+
+  const updateSellingPoint = (index, value) => {
+    const newPoints = [...formData.selling_points];
+    newPoints[index] = value;
+    setFormData({ ...formData, selling_points: newPoints });
+  };
+
+  const removeSellingPoint = (index) => {
+    const newPoints = formData.selling_points.filter((_, i) => i !== index);
+    setFormData({ ...formData, selling_points: newPoints });
   };
 
   const addFAQ = () => {
     setFormData({
       ...formData,
-      faqs: [...formData.faqs, { question: '', answer: '', language: 'en' }]
+      faqs: [...formData.faqs, { question: '', answer: '' }]
     });
   };
 
@@ -170,6 +162,24 @@ const ProductManager = () => {
   const removeFAQ = (index) => {
     const newFAQs = formData.faqs.filter((_, i) => i !== index);
     setFormData({ ...formData, faqs: newFAQs });
+  };
+
+  const addCustomField = () => {
+    setFormData({
+      ...formData,
+      custom_fields: [...formData.custom_fields, { field_name: '', field_value: '' }]
+    });
+  };
+
+  const updateCustomField = (index, field, value) => {
+    const newFields = [...formData.custom_fields];
+    newFields[index][field] = value;
+    setFormData({ ...formData, custom_fields: newFields });
+  };
+
+  const removeCustomField = (index) => {
+    const newFields = formData.custom_fields.filter((_, i) => i !== index);
+    setFormData({ ...formData, custom_fields: newFields });
   };
 
   if (loading) {
@@ -200,27 +210,29 @@ const ProductManager = () => {
       {/* Products Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {products.map((product) => (
-          <div key={product._id} className="bg-white rounded-lg shadow-md p-6 border">
+          <div key={product._id} className={`bg-white rounded-lg shadow-md p-6 border ${product.isActive ? 'border-green-500' : ''}`}>
             <div className="flex justify-between items-start mb-4">
               <h3 className="text-xl font-semibold text-gray-900">{product.name}</h3>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleEdit(product)}
                   className="text-blue-600 hover:text-blue-800"
+                  title="Edit"
                 >
                   <PencilIcon className="h-5 w-5" />
                 </button>
                 <button
                   onClick={() => handleDelete(product._id)}
                   className="text-red-600 hover:text-red-800"
+                  title="Delete"
                 >
                   <TrashIcon className="h-5 w-5" />
                 </button>
                 {!product.isActive && (
                   <button
-                    onClick={() => handleSetActive(product._id)}
+                    onClick={() => handleActivate(product._id)}
                     className="text-green-600 hover:text-green-800"
-                    title="Set Active"
+                    title="Activate"
                   >
                     <EyeIcon className="h-5 w-5" />
                   </button>
@@ -232,20 +244,20 @@ const ProductManager = () => {
             
             <div className="flex justify-between items-center mb-4">
               <span className="text-2xl font-bold text-green-600">
-                {product.currency} {product.price}
+                {product.price || 'Contact for pricing'}
               </span>
-              <span className={`px-2 py-1 rounded-full text-xs ${
-                product.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                product.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
               }`}>
-                {product.isActive ? 'Active' : 'Inactive'}
+                {product.isActive ? 'ACTIVE' : 'INACTIVE'}
               </span>
             </div>
             
             <div className="text-sm text-gray-500">
-              <p>Category: {product.category}</p>
-              <p>Features: {product.features.length}</p>
-              <p>FAQs: {product.faqs.length}</p>
-              <p>Priority: {product.priority}</p>
+              <p>Key Features: {product.key_features?.length || 0}</p>
+              <p>Selling Points: {product.selling_points?.length || 0}</p>
+              <p>FAQs: {product.faqs?.length || 0}</p>
+              <p>Custom Fields: {product.custom_fields?.length || 0}</p>
             </div>
           </div>
         ))}
@@ -264,7 +276,7 @@ const ProductManager = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Product Name
+                    Product Name *
                   </label>
                   <input
                     type="text"
@@ -277,27 +289,21 @@ const ProductManager = () => {
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Category
+                    Price
                   </label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  <input
+                    type="text"
+                    value={formData.price}
+                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                    placeholder="e.g., ₹2000-₹10000 per night"
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="hotel">Hotel</option>
-                    <option value="insurance">Insurance</option>
-                    <option value="saas">SaaS</option>
-                    <option value="real_estate">Real Estate</option>
-                    <option value="ecommerce">E-commerce</option>
-                    <option value="services">Services</option>
-                    <option value="other">Other</option>
-                  </select>
+                  />
                 </div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description
+                  Description *
                 </label>
                 <textarea
                   value={formData.description}
@@ -308,131 +314,83 @@ const ProductManager = () => {
                 />
               </div>
 
-              {/* Pricing */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Price
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.price}
-                    onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Currency
-                  </label>
-                  <select
-                    value={formData.currency}
-                    onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="USD">USD</option>
-                    <option value="INR">INR</option>
-                    <option value="EUR">EUR</option>
-                    <option value="GBP">GBP</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Priority
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={formData.priority}
-                    onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              {/* Sales Pitch */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Opening Line (Hindi/English)
+                  Target Audience
                 </label>
-                <textarea
-                  value={formData.salesPitch.opening}
-                  onChange={(e) => setFormData({ 
-                    ...formData, 
-                    salesPitch: { ...formData.salesPitch, opening: e.target.value }
-                  })}
-                  rows={2}
-                  placeholder="Hello! Main aapko hotel booking service ke baare mein batana chahti hun..."
+                <input
+                  type="text"
+                  value={formData.target_audience}
+                  onChange={(e) => setFormData({ ...formData, target_audience: e.target.value })}
+                  placeholder="e.g., Business travelers, families, budget-conscious travelers"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Value Proposition
-                </label>
-                <textarea
-                  value={formData.salesPitch.valueProposition}
-                  onChange={(e) => setFormData({ 
-                    ...formData, 
-                    salesPitch: { ...formData.salesPitch, valueProposition: e.target.value }
-                  })}
-                  rows={2}
-                  placeholder="We offer premium hotels at competitive prices with personalized service..."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Features */}
+              {/* Key Features */}
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-sm font-medium text-gray-700">
-                    Features
+                    Key Features
                   </label>
                   <button
                     type="button"
-                    onClick={addFeature}
+                    onClick={addKeyFeature}
                     className="text-blue-600 hover:text-blue-800 text-sm"
                   >
                     + Add Feature
                   </button>
                 </div>
-                {formData.features.map((feature, index) => (
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
+                {formData.key_features.map((feature, index) => (
+                  <div key={index} className="flex gap-2 mb-2">
                     <input
                       type="text"
-                      placeholder="Feature name"
-                      value={feature.name}
-                      onChange={(e) => updateFeature(index, 'name', e.target.value)}
-                      className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Feature description"
+                      value={feature}
+                      onChange={(e) => updateKeyFeature(index, e.target.value)}
+                      className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
                     />
+                    <button
+                      type="button"
+                      onClick={() => removeKeyFeature(index)}
+                      className="text-red-600 hover:text-red-800"
+                    >
+                      <TrashIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Selling Points */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Selling Points
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addSellingPoint}
+                    className="text-blue-600 hover:text-blue-800 text-sm"
+                  >
+                    + Add Selling Point
+                  </button>
+                </div>
+                {formData.selling_points.map((point, index) => (
+                  <div key={index} className="flex gap-2 mb-2">
                     <input
                       type="text"
-                      placeholder="Description"
-                      value={feature.description}
-                      onChange={(e) => updateFeature(index, 'description', e.target.value)}
-                      className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Selling point"
+                      value={point}
+                      onChange={(e) => updateSellingPoint(index, e.target.value)}
+                      className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
                     />
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Benefit"
-                        value={feature.benefit}
-                        onChange={(e) => updateFeature(index, 'benefit', e.target.value)}
-                        className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeFeature(index)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        <TrashIcon className="h-5 w-5" />
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeSellingPoint(index)}
+                      className="text-red-600 hover:text-red-800"
+                    >
+                      <TrashIcon className="h-5 w-5" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -453,23 +411,14 @@ const ProductManager = () => {
                 </div>
                 {formData.faqs.map((faq, index) => (
                   <div key={index} className="mb-4 p-4 border border-gray-200 rounded-lg">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                    <div className="mb-2">
                       <input
                         type="text"
                         placeholder="Question"
                         value={faq.question}
                         onChange={(e) => updateFAQ(index, 'question', e.target.value)}
-                        className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
-                      <select
-                        value={faq.language}
-                        onChange={(e) => updateFAQ(index, 'language', e.target.value)}
-                        className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="en">English</option>
-                        <option value="hi">Hindi</option>
-                        <option value="mixed">Mixed</option>
-                      </select>
                     </div>
                     <div className="flex gap-2">
                       <textarea
@@ -491,17 +440,47 @@ const ProductManager = () => {
                 ))}
               </div>
 
-              {/* Status */}
-              <div className="flex items-center gap-4">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={formData.isActive}
-                    onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                    className="mr-2"
-                  />
-                  Active Product
-                </label>
+              {/* Custom Fields */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Custom Fields
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addCustomField}
+                    className="text-blue-600 hover:text-blue-800 text-sm"
+                  >
+                    + Add Custom Field
+                  </button>
+                </div>
+                {formData.custom_fields.map((field, index) => (
+                  <div key={index} className="grid grid-cols-2 gap-2 mb-2">
+                    <input
+                      type="text"
+                      placeholder="Field name (e.g., Warranty)"
+                      value={field.field_name}
+                      onChange={(e) => updateCustomField(index, 'field_name', e.target.value)}
+                      className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Field value (e.g., 2 years)"
+                        value={field.field_value}
+                        onChange={(e) => updateCustomField(index, 'field_value', e.target.value)}
+                        className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeCustomField(index)}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        <TrashIcon className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
 
               {/* Actions */}

@@ -17,84 +17,56 @@ const productSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
-  category: {
-    type: String,
-    required: true,
-    enum: ['hotel', 'insurance', 'saas', 'real_estate', 'ecommerce', 'services', 'other'],
-    index: true
-  },
   price: {
-    type: Number,
-    required: true,
-    min: 0
+    type: String
   },
-  currency: {
-    type: String,
-    default: 'USD',
-    enum: ['USD', 'INR', 'EUR', 'GBP']
-  },
-  features: [{
-    name: String,
-    description: String,
-    benefit: String
+  key_features: [String],
+  selling_points: [String],
+  common_objections: [{ 
+    objection: String, 
+    response: String 
   }],
   faqs: [{
     question: String,
-    answer: String,
-    language: {
-      type: String,
-      enum: ['en', 'hi', 'mixed'],
-      default: 'en'
-    }
+    answer: String
   }],
-  targetAudience: {
-    demographics: {
-      ageRange: String,
-      incomeLevel: String,
-      location: String
-    },
-    painPoints: [String],
-    buyingMotivations: [String]
-  },
-  competitorComparison: [{
-    competitorName: String,
-    ourAdvantage: String,
-    theirWeakness: String
+  target_audience: String,
+  
+  // Custom fields - flexible key-value pairs
+  custom_fields: [{
+    field_name: { type: String, required: true },
+    field_value: { type: String, required: true }
   }],
-  salesPitch: {
-    opening: String,
-    valueProposition: String,
-    urgencyFactors: [String],
-    closingPhrases: [String]
-  },
-  isActive: {
-    type: Boolean,
-    default: true,
+  
+  // Active status - ONLY ONE can be true at a time
+  isActive: { 
+    type: Boolean, 
+    default: false,
     index: true
   },
-  priority: {
-    type: Number,
-    default: 1,
-    min: 1,
-    max: 10
+  
+  createdAt: { 
+    type: Date, 
+    default: Date.now 
   },
-  tags: [String],
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
+  updatedAt: { 
+    type: Date, 
+    default: Date.now 
   }
 }, {
   timestamps: true
 });
 
-// Indexes for better query performance
-productSchema.index({ name: 1 }, { unique: true });
-productSchema.index({ category: 1, isActive: 1 });
-productSchema.index({ priority: -1, isActive: 1 });
+// Pre-save middleware to ensure only one product is active
+productSchema.pre('save', async function(next) {
+  if (this.isActive) {
+    await this.constructor.updateMany(
+      { _id: { $ne: this._id } },
+      { isActive: false }
+    );
+  }
+  next();
+});
 
 // Pre-save middleware to update timestamp
 productSchema.pre('save', function(next) {
@@ -102,49 +74,14 @@ productSchema.pre('save', function(next) {
   next();
 });
 
-// Static method to get active products by category
-productSchema.statics.getActiveByCategory = async function(category) {
-  return await this.find({ category, isActive: true }).sort({ priority: -1 });
+// Static method to get active product
+productSchema.statics.getActive = async function() {
+  return await this.findOne({ isActive: true });
 };
 
-// Static method to get all active products
-productSchema.statics.getAllActive = async function() {
-  return await this.find({ isActive: true }).sort({ priority: -1, name: 1 });
+// Static method to get all products
+productSchema.statics.getAll = async function() {
+  return await this.find({}).sort({ createdAt: -1 });
 };
-
-// Static method to search products
-productSchema.statics.searchProducts = async function(query, category = null) {
-  const searchCriteria = {
-    isActive: true,
-    $or: [
-      { name: { $regex: query, $options: 'i' } },
-      { description: { $regex: query, $options: 'i' } },
-      { tags: { $in: [new RegExp(query, 'i')] } }
-    ]
-  };
-  
-  if (category) {
-    searchCriteria.category = category;
-  }
-  
-  return await this.find(searchCriteria).sort({ priority: -1 });
-};
-
-// Virtual for formatted price
-productSchema.virtual('formattedPrice').get(function() {
-  return `${this.currency} ${this.price.toLocaleString()}`;
-});
-
-// Virtual for product summary
-productSchema.virtual('summary').get(function() {
-  return {
-    id: this._id,
-    name: this.name,
-    category: this.category,
-    price: this.formattedPrice,
-    isActive: this.isActive,
-    priority: this.priority
-  };
-});
 
 module.exports = mongoose.model('Product', productSchema);

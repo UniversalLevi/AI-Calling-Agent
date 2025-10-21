@@ -12,19 +12,7 @@ const SalesAnalytics = require('../models/SalesAnalytics');
 // Product Management
 const getProducts = async (req, res) => {
   try {
-    const { category, search, active } = req.query;
-    let products;
-
-    if (search) {
-      products = await Product.searchProducts(search, category);
-    } else if (category) {
-      products = await Product.getActiveByCategory(category);
-    } else if (active === 'false') {
-      products = await Product.find({ isActive: false }).sort({ name: 1 });
-    } else {
-      products = await Product.getAllActive();
-    }
-
+    const products = await Product.getAll();
     res.json({
       success: true,
       data: products,
@@ -33,9 +21,66 @@ const getProducts = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Error fetching products',
-      error: error.message
+      message: error.message
     });
+  }
+};
+
+// Get active product
+const getActiveProduct = async (req, res) => {
+  try {
+    const product = await Product.findOne({ isActive: true });
+    res.json({ success: true, data: product });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Activate a product (deactivates others)
+const activateProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Deactivate all products
+    await Product.updateMany({}, { isActive: false });
+    
+    // Activate the selected product
+    const product = await Product.findByIdAndUpdate(
+      id,
+      { isActive: true, updatedAt: Date.now() },
+      { new: true }
+    );
+    
+    res.json({ success: true, data: product });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Create product with custom fields
+const createProduct = async (req, res) => {
+  try {
+    const productData = req.body;
+    const product = new Product(productData);
+    await product.save();
+    res.status(201).json({ success: true, data: product });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Update product with custom fields
+const updateProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const product = await Product.findByIdAndUpdate(
+      id,
+      { ...req.body, updatedAt: Date.now() },
+      { new: true }
+    );
+    res.json({ success: true, data: product });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -60,19 +105,6 @@ const setActiveProduct = async (req, res) => {
   }
 };
 
-// Get Active Product
-const getActiveProduct = async (req, res) => {
-  try {
-    const product = await Product.findOne({ isActive: true }).sort({ updatedAt: -1 });
-    if (!product) {
-      return res.json({ success: true, data: null, message: 'No active product set' });
-    }
-    res.json({ success: true, data: product });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Error fetching active product', error: error.message });
-  }
-};
-
 const getProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -91,54 +123,6 @@ const getProduct = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching product',
-      error: error.message
-    });
-  }
-};
-
-const createProduct = async (req, res) => {
-  try {
-    const product = new Product(req.body);
-    await product.save();
-
-    res.status(201).json({
-      success: true,
-      data: product,
-      message: 'Product created successfully'
-    });
-  } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error creating product',
-      error: error.message
-    });
-  }
-};
-
-const updateProduct = async (req, res) => {
-  try {
-    const product = await Product.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: product,
-      message: 'Product updated successfully'
-    });
-  } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error updating product',
       error: error.message
     });
   }
@@ -382,6 +366,7 @@ module.exports = {
   deleteProduct,
   setActiveProduct,
   getActiveProduct,
+  activateProduct,
   
   // Sales Script Management
   getSalesScripts,

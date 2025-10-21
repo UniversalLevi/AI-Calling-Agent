@@ -301,6 +301,24 @@ def create_audio_server():
     
     return audio_app
 
+def load_active_product():
+    """Fetch active product from dashboard"""
+    try:
+        dashboard_url = os.getenv('SALES_API_URL', 'http://localhost:5000')
+        response = requests.get(f"{dashboard_url}/api/sales/products/active", timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('success') and data.get('data'):
+                print(f"✅ Active product loaded: {data['data']['name']}")
+                return data['data']
+        
+        print("⚠️ No active product found")
+        return None
+    except Exception as e:
+        print(f"❌ Failed to load active product: {e}")
+        return None
+
 # =============================================================================
 # VOICE BOT SERVER (Built-in)
 # =============================================================================
@@ -355,10 +373,15 @@ def create_voice_bot_server():
         
         print("✅ Enhanced AI components ready!")
         
+        # Load active product from dashboard
+        bot_app.active_product = load_active_product()
+        
         bot_app.stt = stt
         bot_app.enhanced_tts = speak_mixed_enhanced
         # Per-call language state (CallSid -> 'en' | 'hi' | 'mixed')
         bot_app.call_language = {}
+        # Track logged calls to prevent duplicates
+        bot_app.logged_calls = set()
         
     except Exception as e:
         print(f"❌ Error initializing AI components: {e}")
@@ -425,16 +448,19 @@ def create_voice_bot_server():
         except Exception as e:
             print(f"⚠️ Failed to initialize conversation memory: {e}")
         
-        # Log call start to dashboard
+        # Log call start to dashboard (only once per call)
         try:
             from src.dashboard_integration import dashboard
-            dashboard.log_call_start({
-                'call_sid': call_sid,
-                'from': caller,
-                'to': to_number,
-                'direction': 'inbound',
-                'language': 'mixed'
-            })
+            # Check if call already logged to prevent duplicates
+            if call_sid not in bot_app.logged_calls:
+                dashboard.log_call_start({
+                    'call_sid': call_sid,
+                    'from': caller,
+                    'to': to_number,
+                    'direction': 'inbound',
+                    'language': 'mixed'
+                })
+                bot_app.logged_calls.add(call_sid)
         except Exception as e:
             print(f"⚠️ Dashboard logging failed: {e}")
         
@@ -466,8 +492,14 @@ def create_voice_bot_server():
             # Use enhanced real-time conversation with shorter timeouts
             print("🚀 Starting smart call mode")
             
-            # Generate smooth, natural greeting
+            # Generate product-aware greeting
             greeting_text = "Hi there! I am Sara. How can I help you today?"
+            if hasattr(bot_app, 'active_product') and bot_app.active_product:
+                product = bot_app.active_product
+                greeting_text = f"Hello! I'm Sara calling about {product['name']}. {product['description'][:100]}... Are you interested in learning more?"
+                print(f"🎯 Using product-aware greeting for: {product['name']}")
+            else:
+                print("⚠️ No active product found - using generic greeting")
             
             # Use ultra-simple interruption if requested
             if interruption_mode == 'simple' and ULTRA_SIMPLE_INTERRUPTION_AVAILABLE:
@@ -1349,52 +1381,36 @@ def create_voice_bot_server():
                                 else:
                                     return base_prompt + "Respond helpfully and naturally. Keep it brief and focused (max 2 sentences)." + memory_context
                         
-                        # Simple conversation flow - direct responses based on user input
-                        speech_lower = speech_result.lower()
-                        
-                        # Simple conversation logic
-                        if any(word in speech_lower for word in ['hello', 'hi', 'namaste', 'hey']):
-                            if detected_language in ['hi', 'mixed']:
-                                bot_response = "Namaste! Main Sara hun aur main aapko hotel booking service ke baare mein call kar rahi hun. Kya aap interested hain?"
-                            else:
-                                bot_response = "Hello! I'm Sara calling about our amazing hotel booking service. Are you interested in booking a hotel?"
-                        
-                        elif any(word in speech_lower for word in ['yes', 'haan', 'interested', 'theek hai', 'okay']):
-                            if detected_language in ['hi', 'mixed']:
-                                bot_response = "Bahut achha! Konse city mein hotel book karna chahte hain aap?"
-                            else:
-                                bot_response = "Great! What city would you like to book a hotel in?"
-                        
-                        elif any(city in speech_lower for city in ['agra', 'delhi', 'mumbai', 'goa', 'jaipur', 'bangalore', 'chennai', 'kolkata', 'hyderabad', 'pune']):
-                            if detected_language in ['hi', 'mixed']:
-                                bot_response = f"Perfect! Main aapko {speech_result} mein great hotels dila sakti hun. Aapka budget kitna hai?"
-                            else:
-                                bot_response = f"Perfect! I can help you find great hotels in {speech_result}. What's your budget range?"
-                        
-                        elif any(word in speech_lower for word in ['budget', 'price', 'cost', 'paisa', 'kitna', 'expensive', 'cheap']):
-                            if detected_language in ['hi', 'mixed']:
-                                bot_response = "Excellent! Mere paas ₹2000 se ₹10000 tak ke hotels hain. Kab travel karna chahte hain aap?"
-                            else:
-                                bot_response = "Excellent! I have hotels from ₹2000 to ₹10000 per night. When do you want to travel?"
-                        
-                        elif any(word in speech_lower for word in ['book', 'reserve', 'confirm', 'book karo', 'confirm karo']):
-                            if detected_language in ['hi', 'mixed']:
-                                bot_response = "Perfect! Main aapko booking team se connect kar deti hun. Please hold on."
-                            else:
-                                bot_response = "Perfect! I'll connect you with our booking team right now. Please hold on."
-                        
-                        elif any(word in speech_lower for word in ['no', 'nahi', 'not interested', 'busy', 'later', 'baad mein']):
-                            if detected_language in ['hi', 'mixed']:
-                                bot_response = "Koi baat nahi! Agar kabhi hotel booking ki zaroorat ho to call kar sakte hain. Thank you!"
-                            else:
-                                bot_response = "No problem! Feel free to call us anytime you need hotel booking. Thank you!"
-                        
+                        # Use AI brain for natural conversation
+                        if bot_app.gpt:
+                            # Build context-aware prompt
+                            product_context = ""
+                            if hasattr(bot_app, 'active_product') and bot_app.active_product:
+                                product = bot_app.active_product
+                                product_context = f"""
+You are selling: {product['name']}
+Description: {product['description']}
+Price: {product.get('price', 'Contact for pricing')}
+Key Features: {', '.join(product.get('key_features', []))}
+
+IMPORTANT RULES:
+1. ONLY discuss this product - do not talk about other products or services
+2. If user asks about something else, politely redirect: "I can only help with {product['name']}, but I'd be happy to tell you more about it!"
+3. Keep responses short (2-3 sentences max for phone calls)
+4. Be natural and conversational
+5. Respond in the same language the user speaks (English/Hindi/Hinglish)
+"""
+                            
+                            system_prompt = f"""You are Sara, a friendly AI sales assistant on a phone call.
+{product_context}
+
+User said: "{speech_result}"
+
+Respond naturally and keep it brief (2-3 sentences)."""
+                            
+                            bot_response = bot_app.gpt.ask(system_prompt, detected_language)
                         else:
-                            # Default response for unclear input
-                            if detected_language in ['hi', 'mixed']:
-                                bot_response = "Main samajh nahi payi. Kya aap hotel booking mein interested hain?"
-                            else:
-                                bot_response = "I didn't catch that. Are you interested in hotel booking?"
+                            bot_response = "I'm having technical difficulties. Please try again later."
                         
                         print(f"🤖 Sara: {bot_response}")
                         
@@ -1826,7 +1842,9 @@ def create_voice_bot_server():
                 # Clean up call data
                 if call_sid in bot_app.call_language:
                     del bot_app.call_language[call_sid]
-                    print(f"🧹 Cleaned up call data for: {call_sid}")
+                if call_sid in bot_app.logged_calls:
+                    bot_app.logged_calls.discard(call_sid)
+                print(f"🧹 Cleaned up call data for: {call_sid}")
             
             return '', 200
             
