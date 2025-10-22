@@ -30,14 +30,14 @@ const Layout = () => {
   // Show loading spinner while authenticating
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
         <LoadingSpinner size="lg" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div className="min-h-screen bg-dark-bg">
       {/* Sidebar */}
       <Sidebar 
         isOpen={sidebarOpen} 
@@ -53,8 +53,8 @@ const Layout = () => {
         />
 
         {/* Page content */}
-        <main className="py-6">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <main className="py-8">
+          <div className="max-w-7xl mx-auto px-8">
             <Outlet />
           </div>
         </main>
@@ -66,7 +66,7 @@ const Layout = () => {
           className="fixed inset-0 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         >
-          <div className="absolute inset-0 bg-gray-800 opacity-75"></div>
+          <div className="absolute inset-0 bg-dark-bg opacity-75"></div>
         </div>
       )}
     </div>

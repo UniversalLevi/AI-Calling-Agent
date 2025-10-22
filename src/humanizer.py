@@ -7,6 +7,7 @@ import random
 import re
 from typing import List, Dict, Tuple
 from enum import Enum
+from src.config import FILLER_FREQUENCY, ENABLE_MICRO_SENTENCES, ENABLE_SEMANTIC_PACING
 
 class EmotionalTone(Enum):
     EMPATHETIC = "empathetic"
@@ -19,6 +20,19 @@ class Humanizer:
     """Adds human-like elements to AI responses"""
     
     def __init__(self):
+        # Get settings from dashboard or use defaults
+        try:
+            from .dashboard_integration import sales_dashboard
+            settings = sales_dashboard.get_voice_settings()
+            self.filler_frequency = settings.get('filler_frequency', FILLER_FREQUENCY)
+            self.enable_micro_sentences = settings.get('enable_micro_sentences', ENABLE_MICRO_SENTENCES)
+            self.enable_semantic_pacing = settings.get('enable_semantic_pacing', ENABLE_SEMANTIC_PACING)
+        except Exception:
+            # Fallback to config values
+            self.filler_frequency = FILLER_FREQUENCY
+            self.enable_micro_sentences = ENABLE_MICRO_SENTENCES
+            self.enable_semantic_pacing = ENABLE_SEMANTIC_PACING
+            
         # Filler words by language
         self.fillers = {
             'en': {
@@ -78,7 +92,7 @@ class Humanizer:
     
     def add_natural_elements(self, text: str, language: str = 'en', 
                            tone: EmotionalTone = EmotionalTone.NEUTRAL,
-                           filler_frequency: float = 0.3) -> str:
+                           filler_frequency: float = None) -> str:
         """
         Add natural human-like elements to text
         
@@ -86,23 +100,31 @@ class Humanizer:
             text: Original text
             language: Language code ('en', 'hi', 'mixed')
             tone: Emotional tone to apply
-            filler_frequency: Probability of adding fillers (0.0 to 1.0)
+            filler_frequency: Probability of adding fillers (0.0 to 1.0), uses config default if None
             
         Returns:
             Enhanced text with natural elements
         """
+        if filler_frequency is None:
+            filler_frequency = FILLER_FREQUENCY
+            
         enhanced_text = text
         
+        # Convert to micro-sentences if enabled
+        if ENABLE_MICRO_SENTENCES:
+            enhanced_text = self._convert_to_micro_sentences(enhanced_text)
+        
         # Add emotional tone prefix occasionally
-        if random.random() < 0.2:  # 20% chance
+        if random.random() < 0.15:  # Reduced to 15% chance
             enhanced_text = self._add_tone_prefix(enhanced_text, language, tone)
         
-        # Add fillers occasionally
+        # Add contextual fillers
         if random.random() < filler_frequency:
-            enhanced_text = self._add_filler(enhanced_text, language)
+            enhanced_text = self._add_contextual_filler(enhanced_text, language, tone)
         
-        # Add natural pauses using SSML breaks
-        enhanced_text = self._add_natural_pauses(enhanced_text)
+        # Add semantic pauses if enabled
+        if ENABLE_SEMANTIC_PACING:
+            enhanced_text = self._add_semantic_pauses(enhanced_text)
         
         return enhanced_text
     
@@ -123,17 +145,42 @@ class Humanizer:
         else:
             return f"{prefix}, {text}"
     
-    def _add_filler(self, text: str, language: str) -> str:
-        """Add natural filler words"""
+    def _convert_to_micro_sentences(self, text: str) -> str:
+        """Convert long sentences to shorter, more natural micro-sentences."""
+        sentences = text.split('. ')
+        micro_sentences = []
+        
+        for sentence in sentences:
+            if len(sentence.split()) > 12:  # Long sentence
+                # Split on conjunctions and commas
+                parts = re.split(r'[,;]\s*|\s+(and|aur|lekin|but|ya|or)\s+', sentence)
+                if len(parts) > 1:
+                    # Clean up parts and add them
+                    for part in parts:
+                        if part and part.strip():
+                            micro_sentences.append(part.strip())
+                else:
+                    micro_sentences.append(sentence)
+            else:
+                micro_sentences.append(sentence)
+        
+        return '. '.join(micro_sentences)
+    
+    def _add_contextual_filler(self, text: str, language: str, tone: EmotionalTone) -> str:
+        """Add contextual filler based on emotion and content."""
         filler_categories = self.fillers.get(language, self.fillers['en'])
         
-        # Choose filler category based on context
-        if any(word in text.lower() for word in ['sorry', 'maaf', 'excuse']):
+        # Choose filler category based on tone and content
+        if tone == EmotionalTone.EMPATHETIC:
             category = 'understanding'
-        elif any(word in text.lower() for word in ['great', 'perfect', 'accha', 'shabash']):
-            category = 'positive'
+        elif tone == EmotionalTone.CONFIDENT:
+            category = 'confirmation'
+        elif tone == EmotionalTone.CURIOUS:
+            category = 'thinking'
         elif any(word in text.lower() for word in ['check', 'see', 'dekho', 'let me']):
             category = 'processing'
+        elif any(word in text.lower() for word in ['great', 'perfect', 'accha', 'shabash']):
+            category = 'positive'
         else:
             category = 'thinking'
         
@@ -149,6 +196,38 @@ class Humanizer:
         else:
             # Add filler at the beginning
             return f"{filler}, {text}"
+    
+    def _add_semantic_pauses(self, text: str) -> str:
+        """Add semantic pauses instead of random SSML breaks."""
+        # Add pauses only at natural break points
+        enhanced_text = text
+        
+        # Add pauses after commas (shorter)
+        enhanced_text = re.sub(r',\s*', ', <break time="200ms"/> ', enhanced_text)
+        
+        # Add pauses after periods (longer)
+        enhanced_text = re.sub(r'\.\s*', '. <break time="400ms"/> ', enhanced_text)
+        
+        # Add thinking pauses before specific phrases
+        thinking_phrases = [
+            'let me check', 'let me see', 'give me a moment',
+            'dekho', 'ek minute', 'thoda ruko', 'main dekh leti hun'
+        ]
+        
+        for phrase in thinking_phrases:
+            pattern = f'\\b{re.escape(phrase)}\\b'
+            enhanced_text = re.sub(
+                pattern, 
+                f'<break time="600ms"/> {phrase}', 
+                enhanced_text, 
+                flags=re.IGNORECASE
+            )
+        
+        return enhanced_text
+    
+    def _add_filler(self, text: str, language: str) -> str:
+        """Legacy filler method - kept for backward compatibility."""
+        return self._add_contextual_filler(text, language, EmotionalTone.NEUTRAL)
     
     def _add_natural_pauses(self, text: str) -> str:
         """Add natural pauses using SSML breaks"""
@@ -176,7 +255,56 @@ class Humanizer:
                 flags=re.IGNORECASE
             )
         
-        return enhanced_text
+    def convert_to_spoken_tone(self, text: str, language: str = 'en') -> str:
+        """Convert written tone to spoken tone for more natural speech."""
+        if language in ['hi', 'mixed']:
+            # Convert formal written patterns to spoken Hindi
+            conversions = {
+                'Please provide your name': 'Aapka naam bata dijiyega?',
+                'Please wait': 'Thoda rukiyega',
+                'I will help you': 'Main help karti hoon',
+                'Thank you': 'Dhanyawad',
+                'You are welcome': 'Koi baat nahi',
+                'I understand': 'Main samajh sakti hun',
+                'Let me check': 'Main check kar leti hoon',
+                'One moment': 'Ek second',
+                'Of course': 'Bilkul',
+                'Absolutely': 'Zarur',
+                'Please confirm': 'Confirm kar dijiyega',
+                'Please provide': 'Bata dijiyega',
+                'I can help': 'Main help kar sakti hun',
+                'No problem': 'Koi problem nahi',
+                'That\'s correct': 'Bilkul sahi hai',
+                'I\'m sorry': 'Sorry',
+                'Excuse me': 'Maaf kariye'
+            }
+        else:
+            # Convert formal written patterns to spoken English
+            conversions = {
+                'Please provide your name': 'Could you tell me your name?',
+                'Please wait': 'Just a moment',
+                'I will help you': 'I\'ll help you with that',
+                'Thank you': 'Thanks',
+                'You are welcome': 'No problem',
+                'I understand': 'I get it',
+                'Let me check': 'Let me look that up',
+                'One moment': 'One sec',
+                'Of course': 'Sure thing',
+                'Absolutely': 'Definitely',
+                'Please confirm': 'Can you confirm that?',
+                'Please provide': 'Could you give me',
+                'I can help': 'I can help with that',
+                'No problem': 'No worries',
+                'That\'s correct': 'That\'s right',
+                'I\'m sorry': 'Sorry about that',
+                'Excuse me': 'Pardon me'
+            }
+        
+        result = text
+        for formal, spoken in conversions.items():
+            result = result.replace(formal, spoken)
+        
+        return result
     
     def get_ssml_response(self, text: str, language: str = 'en', 
                          tone: EmotionalTone = EmotionalTone.NEUTRAL) -> str:
@@ -236,7 +364,10 @@ class Humanizer:
         tone = self.detect_context_tone(text)
         
         # Add natural elements
-        enhanced = self.add_natural_elements(text, language, tone, filler_frequency=0.25)
+        enhanced = self.add_natural_elements(text, language, tone)
+        
+        # Convert to spoken tone
+        enhanced = self.convert_to_spoken_tone(enhanced, language)
         
         return enhanced
 

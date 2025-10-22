@@ -85,7 +85,7 @@ const CallLogs = () => {
   if (loading && calls.length === 0) {
     return (
       <div className="fade-in">
-        <h1 className="text-3xl font-bold text-white mb-6">Call Logs</h1>
+        <h1 className="text-3xl font-bold text-dark-text mb-6">Call Logs</h1>
         <div className="card">
           <div className="flex justify-center items-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -98,7 +98,7 @@ const CallLogs = () => {
   return (
     <div className="fade-in">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-white">Call Logs</h1>
+        <h1 className="text-3xl font-bold text-dark-text">Call Logs</h1>
         <p className="mt-2 text-sm text-gray-300">
           View and manage all call history
         </p>
@@ -199,7 +199,7 @@ const CallLogs = () => {
               ) : (
                 calls.map((call) => (
                   <tr key={call._id} className="hover:bg-gray-700">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-dark-text">
                       {call.callId.substring(0, 10)}...
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">

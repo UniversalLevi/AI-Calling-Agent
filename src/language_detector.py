@@ -7,6 +7,69 @@ This module provides language detection capabilities for mixed Hindi-English con
 
 import re
 from typing import Optional, Tuple
+from src.config import HINDI_BIAS_THRESHOLD, DEFAULT_LANGUAGE
+
+def detect_language_with_phone_bias(text: str, phone_number: str = None) -> str:
+    """
+    Detect language with phone number country code bias and Hindi preference.
+    
+    Args:
+        text: Input text to analyze
+        phone_number: User's phone number for country detection
+        
+    Returns:
+        Language code: 'hi', 'en', or 'mixed'
+    """
+    # Check phone number country code first
+    if phone_number and phone_number.startswith('+91'):
+        # For Indian numbers, default to Hindi unless clearly English
+        basic_detection = detect_language(text)
+        if basic_detection == 'en':
+            # Double-check for Hindi indicators (both Devanagari and Latin script)
+            hindi_indicators = ['मैं', 'आप', 'है', 'हैं', 'कर', 'करना', 'चाहिए', 'हो', 'होगा']
+            hinglish_words = ['namaste', 'kaise', 'haan', 'nahi', 'aap', 'kya', 'theek', 'bilkul']
+            
+            if any(word in text for word in hindi_indicators) or any(word in text.lower() for word in hinglish_words):
+                return 'hi'
+        return basic_detection
+    
+    # For non-Indian numbers, use standard detection with Hindi bias
+    # Get Hindi bias threshold from dashboard settings
+    try:
+        from .dashboard_integration import sales_dashboard
+        settings = sales_dashboard.get_voice_settings()
+        hindi_bias_threshold = settings.get('hindi_bias_threshold', HINDI_BIAS_THRESHOLD)
+    except Exception:
+        hindi_bias_threshold = HINDI_BIAS_THRESHOLD
+    
+    return detect_language_with_bias(text, hindi_bias_threshold)
+
+def detect_language_with_bias(text: str, hindi_bias_threshold: float = HINDI_BIAS_THRESHOLD) -> str:
+    """
+    Detect language with Hindi bias threshold.
+    
+    Args:
+        text: Input text to analyze
+        
+    Returns:
+        Language code: 'hi', 'en', or 'mixed'
+    """
+    basic_detection = detect_language(text)
+    
+    # Apply Hindi bias threshold
+    if hindi_bias_threshold > 0.5:
+        # More aggressive Hindi detection
+        if basic_detection == 'mixed':
+            return 'hi'  # Bias mixed toward Hindi
+        elif basic_detection == 'en':
+            # Check for Hindi indicators even in English text
+            hindi_indicators = ['मैं', 'आप', 'है', 'हैं', 'कर', 'करना', 'चाहिए', 'हो', 'होगा']
+            hinglish_words = ['namaste', 'kaise', 'haan', 'nahi', 'aap', 'kya', 'theek', 'bilkul']
+            
+            if any(word in text for word in hindi_indicators) or any(word in text.lower() for word in hinglish_words):
+                return 'hi'
+    
+    return basic_detection
 
 def detect_language(text: str) -> str:
     """
@@ -46,26 +109,20 @@ def detect_language(text: str) -> str:
     lower_text = text.lower()
     hinglish_hits = 0
     hinglish_keywords = [
+        # Pure Hindi transliterations
         'namaste', 'kaise', 'ho', 'hai', 'haan', 'nahi', 'kripya', 'dhanyavad',
-        'madad', 'samay', 'tarikh', 'booking', 'pata', 'number', 'bhai', 'didi', 'ji',
+        'madad', 'samay', 'tarikh', 'pata', 'bhai', 'didi', 'ji',
         'aap', 'hum', 'mera', 'meri', 'kya', 'kyu', 'kyon', 'kab', 'kahan', 'kidhar',
         'chahiye', 'chahiyeh', 'karna', 'hoga', 'krna', 'krunga', 'krungi',
-        # Add more common words
         'mere', 'mujhe', 'tumhe', 'aapko', 'hamein', 'unhein',
         'dekh', 'dekho', 'bolo', 'batao', 'suno', 'samjho',
         'theek', 'bilkul', 'zaroor', 'shayad', 'kabhi',
-        'hotel', 'restaurant', 'room', 'book', 'karo', 'karna',
         'mein', 'me', 'ko', 'se', 'par', 'ke', 'ki', 'ka',
-        # Additional common Hinglish words
-        'accha', 'acha', 'badhiya', 'sahi', 'thik', 'okay', 'ok',
-        'please', 'sorry', 'excuse', 'thank', 'thanks',
-        'help', 'assist', 'support', 'service', 'customer',
-        'time', 'date', 'day', 'night', 'morning', 'evening',
-        'phone', 'call', 'message', 'email', 'address',
-        'name', 'naam', 'age', 'umar', 'city', 'sheher',
-        'price', 'cost', 'money', 'rupees', 'rs', 'paisa',
-        'good', 'bad', 'best', 'better', 'nice', 'great',
-        'yes', 'no', 'maybe', 'sure', 'definitely', 'absolutely'
+        'accha', 'acha', 'badhiya', 'sahi', 'thik',
+        'naam', 'umar', 'sheher', 'paisa',
+        # Hindi-English mixed patterns
+        'hotel book', 'room book', 'train book', 'flight book',
+        'booking karo', 'booking karna', 'book karo', 'book karna'
     ]
     for kw in hinglish_keywords:
         if kw in lower_text:
@@ -75,7 +132,7 @@ def detect_language(text: str) -> str:
         return 'hi'
     elif english_percentage >= 80 and hinglish_hits == 0:
         return 'en'
-    elif hinglish_hits >= 1 and english_percentage >= 30 and hindi_percentage < 15:
+    elif hinglish_hits >= 2 and english_percentage >= 30 and hindi_percentage < 15:
         return 'mixed'
     elif english_percentage >= 70 and hindi_percentage < 5 and hinglish_hits <= 1:
         return 'en'

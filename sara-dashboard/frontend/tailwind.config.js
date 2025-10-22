@@ -7,6 +7,18 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Custom Dark Theme Colors
+        'dark-bg': '#0f172a',
+        'dark-sidebar': '#111827',
+        'dark-card': '#1e293b',
+        'dark-border': '#334155',
+        'dark-text': '#f8fafc',
+        'dark-text-muted': '#94a3b8',
+        'dark-accent': '#2563eb',
+        'dark-hover': '#2d3c56',
+        'dark-success': '#22c55e',
+        
+        // Keep existing color system for compatibility
         primary: {
           50: '#eff6ff',
           100: '#dbeafe',
@@ -69,8 +81,16 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'Poppins', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
+      },
+      fontSize: {
+        'heading-xl': ['26px', { lineHeight: '1.6' }],
+        'heading-lg': ['24px', { lineHeight: '1.6' }],
+        'heading-md': ['22px', { lineHeight: '1.6' }],
+        'body-lg': ['16px', { lineHeight: '1.6' }],
+        'body-md': ['15px', { lineHeight: '1.6' }],
+        'sidebar': ['14px', { lineHeight: '1.6' }],
       },
       spacing: {
         '18': '4.5rem',
@@ -86,9 +106,20 @@ module.exports = {
       boxShadow: {
         'soft': '0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04)',
         'soft-lg': '0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+        'card': '0 2px 8px rgba(0, 0, 0, 0.2)',
+        'card-hover': '0 4px 12px rgba(0, 0, 0, 0.3)',
       },
       backdropBlur: {
         xs: '2px',
+      },
+      transitionProperty: {
+        'all': 'all',
+      },
+      transitionDuration: {
+        '200': '200ms',
+      },
+      transitionTimingFunction: {
+        'ease-in-out': 'ease-in-out',
       },
     },
   },

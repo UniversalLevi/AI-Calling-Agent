@@ -40,13 +40,16 @@ class CallContext:
 class ConversationMemory:
     """Manages conversation memory and context for calls"""
     
-    def __init__(self, max_history_per_call: int = 10, ttl_hours: int = 24):
+    def __init__(self, max_history_per_call: int = 10, ttl_hours: int = 24, 
+                 short_term_recall: int = 5, context_fade_threshold: int = 3):
         self.active_calls: Dict[str, CallContext] = {}
         self.max_history_per_call = max_history_per_call
         self.ttl_hours = ttl_hours
+        self.short_term_recall = short_term_recall  # Limit recall to recent turns
+        self.context_fade_threshold = context_fade_threshold  # Fade older context
         self.lock = threading.Lock()
         
-        print(f"🧠 Conversation Memory initialized (max_history: {max_history_per_call}, TTL: {ttl_hours}h)")
+        print(f"🧠 Conversation Memory initialized (max_history: {max_history_per_call}, TTL: {ttl_hours}h, short_term: {short_term_recall})")
     
     def start_call(self, call_sid: str, language: str = 'en') -> CallContext:
         """Start tracking a new call"""
@@ -155,7 +158,7 @@ class ConversationMemory:
                     break
     
     def get_context_summary(self, call_sid: str) -> str:
-        """Get a summary of call context for AI"""
+        """Get a summary of call context for AI with short-term recall and context fade"""
         with self.lock:
             if call_sid not in self.active_calls:
                 return ""
@@ -163,7 +166,7 @@ class ConversationMemory:
             context = self.active_calls[call_sid]
             summary_parts = []
             
-            # Basic info
+            # Basic info (always include)
             if context.user_name:
                 summary_parts.append(f"User's name: {context.user_name}")
             
@@ -173,15 +176,28 @@ class ConversationMemory:
             if context.service_type:
                 summary_parts.append(f"Service type: {context.service_type}")
             
-            # Recent conversation topics
+            # Short-term conversation recall (last 3-5 turns only)
             if context.conversation_history:
-                recent_topics = []
-                for exchange in context.conversation_history[-3:]:  # Last 3 exchanges
-                    if len(exchange.user_text) > 10:  # Only meaningful exchanges
-                        recent_topics.append(exchange.user_text[:50])
+                recent_exchanges = context.conversation_history[-self.short_term_recall:]
                 
-                if recent_topics:
-                    summary_parts.append(f"Recent topics: {'; '.join(recent_topics)}")
+                # Apply context fade - older exchanges get less weight
+                weighted_topics = []
+                for i, exchange in enumerate(recent_exchanges):
+                    if len(exchange.user_text) > 10:  # Only meaningful exchanges
+                        # Calculate fade weight (recent = 1.0, older = 0.5)
+                        fade_weight = 1.0 if i >= len(recent_exchanges) - self.context_fade_threshold else 0.5
+                        
+                        # Truncate older exchanges more aggressively
+                        max_length = 50 if fade_weight == 1.0 else 30
+                        topic_text = exchange.user_text[:max_length]
+                        
+                        if fade_weight == 1.0:
+                            weighted_topics.append(topic_text)
+                        else:
+                            weighted_topics.append(f"[older context] {topic_text}")
+                
+                if weighted_topics:
+                    summary_parts.append(f"Recent conversation: {'; '.join(weighted_topics)}")
             
             return ". ".join(summary_parts) if summary_parts else ""
     
@@ -192,6 +208,99 @@ class ConversationMemory:
                 return []
             
             return self.active_calls[call_sid].conversation_history.copy()
+    
+    def get_recent_conversation_history(self, call_sid: str) -> List[ConversationExchange]:
+        """Get only recent conversation history (last 3-5 turns) for AI processing"""
+        with self.lock:
+            if call_sid not in self.active_calls:
+                return []
+            
+            context = self.active_calls[call_sid]
+            recent_history = context.conversation_history[-self.short_term_recall:]
+            
+            # Apply context fade to older exchanges
+            faded_history = []
+            for i, exchange in enumerate(recent_history):
+                # Create a copy with faded content
+                faded_exchange = ConversationExchange(
+                    timestamp=exchange.timestamp,
+                    user_text=exchange.user_text,
+                    bot_response=exchange.bot_response,
+                    language=exchange.language,
+                    confidence=exchange.confidence
+                )
+                
+                # Fade older exchanges by truncating them
+                if i < len(recent_history) - self.context_fade_threshold:
+                    faded_exchange.user_text = exchange.user_text[:30] + "..." if len(exchange.user_text) > 30 else exchange.user_text
+                    faded_exchange.bot_response = exchange.bot_response[:30] + "..." if len(exchange.bot_response) > 30 else exchange.bot_response
+                
+                faded_history.append(faded_exchange)
+            
+            return faded_history
+    
+    def store_neutral_facts(self, call_sid: str, user_text: str):
+        """Store only neutral, factual information to avoid overfitting"""
+        with self.lock:
+            if call_sid not in self.active_calls:
+                return
+            
+            context = self.active_calls[call_sid]
+            text_lower = user_text.lower()
+            
+            # Only store neutral facts, not emotional or subjective content
+            neutral_patterns = {
+                'name': [r'my name is (\w+)', r'i am (\w+)', r'this is (\w+)', r'main (\w+) hun', r'mera naam (\w+) hai'],
+                'location': [r'i am from (\w+)', r'i live in (\w+)', r'mera sheher (\w+) hai'],
+                'phone': [r'my number is (\d+)', r'phone number (\d+)', r'mera number (\d+) hai'],
+                'email': [r'my email is (\S+@\S+)', r'email (\S+@\S+)', r'mera email (\S+@\S+) hai']
+            }
+            
+            for fact_type, patterns in neutral_patterns.items():
+                for pattern in patterns:
+                    import re
+                    match = re.search(pattern, text_lower)
+                    if match:
+                        fact_value = match.group(1)
+                        
+                        # Store in preferences with fact type
+                        if fact_type not in context.preferences:
+                            context.preferences[fact_type] = fact_value
+                            print(f"🧠 Stored neutral fact ({fact_type}): {fact_value}")
+                        break
+    
+    def get_neutral_context(self, call_sid: str) -> str:
+        """Get only neutral, factual context for AI (avoids emotional overfitting)"""
+        with self.lock:
+            if call_sid not in self.active_calls:
+                return ""
+            
+            context = self.active_calls[call_sid]
+            neutral_parts = []
+            
+            # Only include neutral facts
+            if context.user_name:
+                neutral_parts.append(f"User's name: {context.user_name}")
+            
+            if context.user_location:
+                neutral_parts.append(f"User's location: {context.user_location}")
+            
+            if context.service_type:
+                neutral_parts.append(f"Service type: {context.service_type}")
+            
+            # Include stored neutral facts from preferences
+            if 'name' in context.preferences:
+                neutral_parts.append(f"User's name: {context.preferences['name']}")
+            
+            if 'location' in context.preferences:
+                neutral_parts.append(f"User's location: {context.preferences['location']}")
+            
+            if 'phone' in context.preferences:
+                neutral_parts.append(f"User's phone: {context.preferences['phone']}")
+            
+            if 'email' in context.preferences:
+                neutral_parts.append(f"User's email: {context.preferences['email']}")
+            return ". ".join(neutral_parts) if neutral_parts else ""
     
     def get_call_context(self, call_sid: str) -> Optional[CallContext]:
         """Get full call context"""
@@ -268,3 +377,18 @@ def get_context_summary(call_sid: str) -> str:
     """Get a summary of call context for AI"""
     memory = get_conversation_memory()
     return memory.get_context_summary(call_sid)
+
+def get_recent_conversation_history(call_sid: str) -> List[ConversationExchange]:
+    """Get only recent conversation history (last 3-5 turns) for AI processing"""
+    memory = get_conversation_memory()
+    return memory.get_recent_conversation_history(call_sid)
+
+def store_neutral_facts(call_sid: str, user_text: str):
+    """Store only neutral, factual information to avoid overfitting"""
+    memory = get_conversation_memory()
+    memory.store_neutral_facts(call_sid, user_text)
+
+def get_neutral_context(call_sid: str) -> str:
+    """Get only neutral, factual context for AI (avoids emotional overfitting)"""
+    memory = get_conversation_memory()
+    return memory.get_neutral_context(call_sid)

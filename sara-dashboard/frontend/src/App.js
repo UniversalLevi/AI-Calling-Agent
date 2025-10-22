@@ -3,7 +3,7 @@
  * React application for Sara AI Calling Bot admin dashboard
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 
@@ -32,6 +32,11 @@ import ScriptEditor from './pages/Sales/ScriptEditor';
 import './index.css';
 
 function App() {
+  // Apply dark theme to html element
+  useEffect(() => {
+    document.documentElement.classList.add('dark');
+  }, []);
+
   return (
     <AuthProvider>
       <SocketProvider>
@@ -39,7 +44,7 @@ function App() {
           v7_startTransition: true,
           v7_relativeSplatPath: true
         }}>
-          <div className="App">
+          <div className="App dark">
             <Routes>
               {/* Public Routes */}
               <Route path="/login" element={<Login />} />

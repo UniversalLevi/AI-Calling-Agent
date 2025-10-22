@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, EyeIcon } from '@heroicons/react/24/outline';
+import axios from 'axios';
 
 const ProductManager = () => {
   const [products, setProducts] = useState([]);
@@ -24,10 +25,9 @@ const ProductManager = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch('/api/sales/products');
-      const data = await response.json();
-      if (data.success) {
-        setProducts(data.data);
+      const response = await axios.get('/sales/products');
+      if (response.data.success) {
+        setProducts(response.data.data);
       }
     } catch (error) {
       console.error('Error fetching products:', error);
@@ -40,18 +40,12 @@ const ProductManager = () => {
     e.preventDefault();
     try {
       const url = editingProduct 
-        ? `/api/sales/products/${editingProduct._id}`
-        : '/api/sales/products';
-      const method = editingProduct ? 'PUT' : 'POST';
+        ? `/sales/products/${editingProduct._id}`
+        : '/sales/products';
+      const method = editingProduct ? 'put' : 'post';
       
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-      
-      const result = await response.json();
-      if (result.success) {
+      const response = await axios[method](url, formData);
+      if (response.data.success) {
         fetchProducts();
         setShowModal(false);
         setEditingProduct(null);
@@ -65,11 +59,8 @@ const ProductManager = () => {
   const handleDelete = async (productId) => {
     if (window.confirm('Are you sure you want to delete this product?')) {
       try {
-        const response = await fetch(`/api/sales/products/${productId}`, {
-          method: 'DELETE'
-        });
-        const result = await response.json();
-        if (result.success) {
+        const response = await axios.delete(`/sales/products/${productId}`);
+        if (response.data.success) {
           fetchProducts();
         }
       } catch (error) {
@@ -80,9 +71,8 @@ const ProductManager = () => {
 
   const handleActivate = async (productId) => {
     try {
-      const response = await fetch(`/api/sales/products/${productId}/activate`, { method: 'POST' });
-      const result = await response.json();
-      if (result.success) {
+      const response = await axios.post(`/sales/products/${productId}/activate`);
+      if (response.data.success) {
         fetchProducts();
       }
     } catch (error) {
@@ -191,16 +181,16 @@ const ProductManager = () => {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Product Manager</h1>
+    <div className="fade-in">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-heading-lg font-bold text-dark-text">Product Manager</h1>
         <button
           onClick={() => {
             resetForm();
             setEditingProduct(null);
             setShowModal(true);
           }}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+          className="btn-primary flex items-center gap-2"
         >
           <PlusIcon className="h-5 w-5" />
           Add Product
@@ -210,20 +200,20 @@ const ProductManager = () => {
       {/* Products Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {products.map((product) => (
-          <div key={product._id} className={`bg-white rounded-lg shadow-md p-6 border ${product.isActive ? 'border-green-500' : ''}`}>
+          <div key={product._id} className={`card ${product.isActive ? 'border-dark-success' : ''}`}>
             <div className="flex justify-between items-start mb-4">
-              <h3 className="text-xl font-semibold text-gray-900">{product.name}</h3>
+              <h3 className="text-heading-md font-semibold text-dark-text">{product.name}</h3>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleEdit(product)}
-                  className="text-blue-600 hover:text-blue-800"
+                  className="text-dark-accent hover:text-blue-400 hover:brightness-110"
                   title="Edit"
                 >
                   <PencilIcon className="h-5 w-5" />
                 </button>
                 <button
                   onClick={() => handleDelete(product._id)}
-                  className="text-red-600 hover:text-red-800"
+                  className="text-red-500 hover:text-red-400 hover:brightness-110"
                   title="Delete"
                 >
                   <TrashIcon className="h-5 w-5" />
@@ -231,7 +221,7 @@ const ProductManager = () => {
                 {!product.isActive && (
                   <button
                     onClick={() => handleActivate(product._id)}
-                    className="text-green-600 hover:text-green-800"
+                    className="text-dark-success hover:text-green-400 hover:brightness-110"
                     title="Activate"
                   >
                     <EyeIcon className="h-5 w-5" />
@@ -240,20 +230,20 @@ const ProductManager = () => {
               </div>
             </div>
             
-            <p className="text-gray-600 mb-4">{product.description}</p>
+            <p className="text-dark-text-muted mb-4">{product.description}</p>
             
             <div className="flex justify-between items-center mb-4">
-              <span className="text-2xl font-bold text-green-600">
+              <span className="text-2xl font-bold text-dark-success">
                 {product.price || 'Contact for pricing'}
               </span>
               <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                product.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                product.isActive ? 'bg-green-900 text-green-200' : 'bg-gray-700 text-gray-300'
               }`}>
                 {product.isActive ? 'ACTIVE' : 'INACTIVE'}
               </span>
             </div>
             
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-dark-text-muted">
               <p>Key Features: {product.key_features?.length || 0}</p>
               <p>Selling Points: {product.selling_points?.length || 0}</p>
               <p>FAQs: {product.faqs?.length || 0}</p>
@@ -265,30 +255,33 @@ const ProductManager = () => {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold mb-6">
-              {editingProduct ? 'Edit Product' : 'Add New Product'}
-            </h2>
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h2 className="text-heading-lg font-bold text-dark-text">
+                {editingProduct ? 'Edit Product' : 'Add New Product'}
+              </h2>
+            </div>
             
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="modal-body">
+              <form id="product-form" onSubmit={handleSubmit} className="space-y-6">
               {/* Basic Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="form-label">
                     Product Name *
                   </label>
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="input-field"
                     required
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="form-label">
                     Price
                   </label>
                   <input
@@ -296,26 +289,26 @@ const ProductManager = () => {
                     value={formData.price}
                     onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                     placeholder="e.g., ₹2000-₹10000 per night"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="input-field"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="form-label">
                   Description *
                 </label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={3}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="input-field"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="form-label">
                   Target Audience
                 </label>
                 <input
@@ -323,20 +316,20 @@ const ProductManager = () => {
                   value={formData.target_audience}
                   onChange={(e) => setFormData({ ...formData, target_audience: e.target.value })}
                   placeholder="e.g., Business travelers, families, budget-conscious travelers"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="input-field"
                 />
               </div>
 
               {/* Key Features */}
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className="form-label">
                     Key Features
                   </label>
                   <button
                     type="button"
                     onClick={addKeyFeature}
-                    className="text-blue-600 hover:text-blue-800 text-sm"
+                    className="text-dark-accent hover:text-blue-400 text-sm hover:brightness-110"
                   >
                     + Add Feature
                   </button>
@@ -348,12 +341,12 @@ const ProductManager = () => {
                       placeholder="Feature description"
                       value={feature}
                       onChange={(e) => updateKeyFeature(index, e.target.value)}
-                      className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
+                      className="input-field flex-1"
                     />
                     <button
                       type="button"
                       onClick={() => removeKeyFeature(index)}
-                      className="text-red-600 hover:text-red-800"
+                      className="text-red-500 hover:text-red-400 hover:brightness-110"
                     >
                       <TrashIcon className="h-5 w-5" />
                     </button>
@@ -364,13 +357,13 @@ const ProductManager = () => {
               {/* Selling Points */}
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className="form-label">
                     Selling Points
                   </label>
                   <button
                     type="button"
                     onClick={addSellingPoint}
-                    className="text-blue-600 hover:text-blue-800 text-sm"
+                    className="text-dark-accent hover:text-blue-400 text-sm hover:brightness-110"
                   >
                     + Add Selling Point
                   </button>
@@ -382,12 +375,12 @@ const ProductManager = () => {
                       placeholder="Selling point"
                       value={point}
                       onChange={(e) => updateSellingPoint(index, e.target.value)}
-                      className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
+                      className="input-field flex-1"
                     />
                     <button
                       type="button"
                       onClick={() => removeSellingPoint(index)}
-                      className="text-red-600 hover:text-red-800"
+                      className="text-red-500 hover:text-red-400 hover:brightness-110"
                     >
                       <TrashIcon className="h-5 w-5" />
                     </button>
@@ -398,26 +391,26 @@ const ProductManager = () => {
               {/* FAQs */}
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className="form-label">
                     FAQs
                   </label>
                   <button
                     type="button"
                     onClick={addFAQ}
-                    className="text-blue-600 hover:text-blue-800 text-sm"
+                    className="text-dark-accent hover:text-blue-400 text-sm hover:brightness-110"
                   >
                     + Add FAQ
                   </button>
                 </div>
                 {formData.faqs.map((faq, index) => (
-                  <div key={index} className="mb-4 p-4 border border-gray-200 rounded-lg">
+                  <div key={index} className="mb-4 p-4 border border-dark-border rounded-lg bg-dark-card">
                     <div className="mb-2">
                       <input
                         type="text"
                         placeholder="Question"
                         value={faq.question}
                         onChange={(e) => updateFAQ(index, 'question', e.target.value)}
-                        className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="input-field"
                       />
                     </div>
                     <div className="flex gap-2">
@@ -426,12 +419,12 @@ const ProductManager = () => {
                         value={faq.answer}
                         onChange={(e) => updateFAQ(index, 'answer', e.target.value)}
                         rows={2}
-                        className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
+                        className="input-field flex-1"
                       />
                       <button
                         type="button"
                         onClick={() => removeFAQ(index)}
-                        className="text-red-600 hover:text-red-800"
+                        className="text-red-500 hover:text-red-400 hover:brightness-110"
                       >
                         <TrashIcon className="h-5 w-5" />
                       </button>
@@ -443,13 +436,13 @@ const ProductManager = () => {
               {/* Custom Fields */}
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className="form-label">
                     Custom Fields
                   </label>
                   <button
                     type="button"
                     onClick={addCustomField}
-                    className="text-blue-600 hover:text-blue-800 text-sm"
+                    className="text-dark-accent hover:text-blue-400 text-sm hover:brightness-110"
                   >
                     + Add Custom Field
                   </button>
@@ -461,7 +454,7 @@ const ProductManager = () => {
                       placeholder="Field name (e.g., Warranty)"
                       value={field.field_name}
                       onChange={(e) => updateCustomField(index, 'field_name', e.target.value)}
-                      className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="input-field"
                     />
                     <div className="flex gap-2">
                       <input
@@ -469,12 +462,12 @@ const ProductManager = () => {
                         placeholder="Field value (e.g., 2 years)"
                         value={field.field_value}
                         onChange={(e) => updateCustomField(index, 'field_value', e.target.value)}
-                        className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
+                        className="input-field flex-1"
                       />
                       <button
                         type="button"
                         onClick={() => removeCustomField(index)}
-                        className="text-red-600 hover:text-red-800"
+                        className="text-red-500 hover:text-red-400 hover:brightness-110"
                       >
                         <TrashIcon className="h-5 w-5" />
                       </button>
@@ -483,23 +476,25 @@ const ProductManager = () => {
                 ))}
               </div>
 
-              {/* Actions */}
-              <div className="flex justify-end gap-4">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  {editingProduct ? 'Update Product' : 'Create Product'}
-                </button>
-              </div>
-            </form>
+              </form>
+            </div>
+            
+            <div className="modal-footer">
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="btn-outline"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="product-form"
+                className="btn-primary"
+              >
+                {editingProduct ? 'Update Product' : 'Create Product'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, EyeIcon } from '@heroicons/react/24/outline';
+import axios from 'axios';
 
 const ScriptEditor = () => {
   const [scripts, setScripts] = useState([]);
@@ -31,7 +32,7 @@ const ScriptEditor = () => {
 
   const fetchScripts = async () => {
     try {
-      const response = await fetch('/api/sales/scripts');
+      const response = await axios.get('/sales/scripts');
       const data = await response.json();
       if (data.success) {
         setScripts(data.data);
@@ -45,7 +46,7 @@ const ScriptEditor = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch('/api/sales/products');
+      const response = await axios.get('/sales/products');
       const data = await response.json();
       if (data.success) {
         setProducts(data.data);
@@ -59,18 +60,12 @@ const ScriptEditor = () => {
     e.preventDefault();
     try {
       const url = editingScript 
-        ? `/api/sales/scripts/${editingScript._id}`
-        : '/api/sales/scripts';
-      const method = editingScript ? 'PUT' : 'POST';
+        ? `/sales/scripts/${editingScript._id}`
+        : '/sales/scripts';
+      const method = editingScript ? 'put' : 'post';
       
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-      
-      const result = await response.json();
-      if (result.success) {
+      const response = await axios[method](url, formData);
+      if (response.data.success) {
         fetchScripts();
         setShowModal(false);
         setEditingScript(null);
@@ -84,11 +79,8 @@ const ScriptEditor = () => {
   const handleDelete = async (scriptId) => {
     if (window.confirm('Are you sure you want to delete this script?')) {
       try {
-        const response = await fetch(`/api/sales/scripts/${scriptId}`, {
-          method: 'DELETE'
-        });
-        const result = await response.json();
-        if (result.success) {
+        const response = await axios.delete(`/sales/scripts/${scriptId}`);
+        if (response.data.success) {
           fetchScripts();
         }
       } catch (error) {
@@ -162,7 +154,7 @@ const ScriptEditor = () => {
             setEditingScript(null);
             setShowModal(true);
           }}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+          className="bg-blue-600 text-dark-text px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
         >
           <PlusIcon className="h-5 w-5" />
           Add Script
@@ -227,23 +219,26 @@ const ScriptEditor = () => {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold mb-6">
-              {editingScript ? 'Edit Script' : 'Add New Script'}
-            </h2>
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h2 className="text-2xl font-bold text-dark-text">
+                {editingScript ? 'Edit Script' : 'Add New Script'}
+              </h2>
+            </div>
             
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="modal-body">
+              <form id="script-form" onSubmit={handleSubmit} className="space-y-6">
               {/* Basic Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-dark-text-muted mb-2">
                     Product
                   </label>
                   <select
                     value={formData.productId}
                     onChange={(e) => setFormData({ ...formData, productId: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="form-select"
                     required
                   >
                     <option value="">Select Product</option>
@@ -256,13 +251,13 @@ const ScriptEditor = () => {
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-dark-text-muted mb-2">
                     Script Type
                   </label>
                   <select
                     value={formData.scriptType}
                     onChange={(e) => setFormData({ ...formData, scriptType: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="form-select"
                   >
                     <option value="greeting">Greeting</option>
                     <option value="qualification">Qualification</option>
@@ -276,13 +271,13 @@ const ScriptEditor = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-dark-text-muted mb-2">
                     Technique
                   </label>
                   <select
                     value={formData.technique}
                     onChange={(e) => setFormData({ ...formData, technique: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="form-select"
                   >
                     <option value="SPIN">SPIN</option>
                     <option value="Consultative">Consultative</option>
@@ -292,13 +287,13 @@ const ScriptEditor = () => {
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-dark-text-muted mb-2">
                     Stage
                   </label>
                   <select
                     value={formData.stage}
                     onChange={(e) => setFormData({ ...formData, stage: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="form-select"
                   >
                     <option value="Situation">Situation</option>
                     <option value="Problem">Problem</option>
@@ -310,13 +305,13 @@ const ScriptEditor = () => {
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-dark-text-muted mb-2">
                     Language
                   </label>
                   <select
                     value={formData.language}
                     onChange={(e) => setFormData({ ...formData, language: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="form-select"
                   >
                     <option value="en">English</option>
                     <option value="hi">Hindi</option>
@@ -327,7 +322,7 @@ const ScriptEditor = () => {
 
               {/* Script Content */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-dark-text-muted mb-2">
                   Script Content
                 </label>
                 <textarea
@@ -335,7 +330,7 @@ const ScriptEditor = () => {
                   onChange={(e) => setFormData({ ...formData, content: e.target.value })}
                   rows={6}
                   placeholder="Enter your script content here. Use {product_name}, {product_price} for dynamic content..."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="form-select"
                   required
                 />
                 <p className="text-sm text-gray-500 mt-1">
@@ -345,7 +340,7 @@ const ScriptEditor = () => {
 
               {/* Conditions */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-dark-text-muted mb-2">
                   Conditions
                 </label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -365,7 +360,7 @@ const ScriptEditor = () => {
                           minQualificationScore: parseInt(e.target.value)
                         }
                       })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="form-select"
                     />
                   </div>
                   
@@ -385,7 +380,7 @@ const ScriptEditor = () => {
                           maxCallDuration: parseInt(e.target.value)
                         }
                       })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="form-select"
                     />
                   </div>
                 </div>
@@ -393,7 +388,7 @@ const ScriptEditor = () => {
 
               {/* Priority */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-dark-text-muted mb-2">
                   Priority (1-10)
                 </label>
                 <input
@@ -402,7 +397,7 @@ const ScriptEditor = () => {
                   max="10"
                   value={formData.priority}
                   onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="form-select"
                 />
               </div>
 
@@ -419,23 +414,25 @@ const ScriptEditor = () => {
                 </label>
               </div>
 
-              {/* Actions */}
-              <div className="flex justify-end gap-4">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  {editingScript ? 'Update Script' : 'Create Script'}
-                </button>
-              </div>
-            </form>
+              </form>
+            </div>
+            
+            <div className="modal-footer">
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="btn-outline"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="script-form"
+                className="btn-primary"
+              >
+                {editingScript ? 'Update Script' : 'Create Script'}
+              </button>
+            </div>
           </div>
         </div>
       )}

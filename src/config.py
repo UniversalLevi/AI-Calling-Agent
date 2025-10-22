@@ -37,7 +37,7 @@ WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base")
 LANGUAGE = os.getenv("LANGUAGE", "en")
 AUTO_DETECT_LANGUAGE = os.getenv("AUTO_DETECT_LANGUAGE", "true").lower() == "true"
 SUPPORTED_LANGUAGES = ["en", "hi"]  # English and Hindi
-DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE", "en")
+DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE", "hi")  # Default to Hindi
 
 
 # =============================================================================
@@ -161,6 +161,18 @@ TALK_LISTEN_TARGET_RATIO = float(os.getenv("TALK_LISTEN_TARGET_RATIO", "0.4"))
 SALES_CACHE_DURATION = int(os.getenv("SALES_CACHE_DURATION", "300"))  # 5 minutes
 
 # =============================================================================
+# HUMANIZATION CONFIGURATION
+# =============================================================================
+HUMANIZED_MODE = os.getenv("HUMANIZED_MODE", "false").lower() == "true"
+HINDI_BIAS_THRESHOLD = float(os.getenv("HINDI_BIAS_THRESHOLD", "0.8"))  # 80% bias toward Hindi
+FILLER_FREQUENCY = float(os.getenv("FILLER_FREQUENCY", "0.15"))  # 15% of responses
+TTS_SPEED = float(os.getenv("TTS_SPEED", "0.9"))  # Natural speech speed
+EMOTION_DETECTION_MODE = os.getenv("EMOTION_DETECTION_MODE", "hybrid")  # hybrid, keyword, gpt
+ENABLE_SPOKEN_TONE_CONVERTER = os.getenv("ENABLE_SPOKEN_TONE_CONVERTER", "true").lower() == "true"
+ENABLE_MICRO_SENTENCES = os.getenv("ENABLE_MICRO_SENTENCES", "true").lower() == "true"
+ENABLE_SEMANTIC_PACING = os.getenv("ENABLE_SEMANTIC_PACING", "true").lower() == "true"
+
+# =============================================================================
 # DEVELOPMENT SETTINGS
 # =============================================================================
 DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
@@ -239,5 +251,28 @@ def print_config_summary():
         print("Sales Mode: DISABLED")
     
     print("=" * 60)
+
+
+# =============================================================================
+# FEATURE FLAG WRAPPER
+# =============================================================================
+def is_humanized_mode_enabled() -> bool:
+    """Check if humanized mode is enabled via feature flag."""
+    return HUMANIZED_MODE
+
+
+def get_humanization_config() -> dict:
+    """Get all humanization configuration settings."""
+    return {
+        'humanized_mode': HUMANIZED_MODE,
+        'hindi_bias_threshold': HINDI_BIAS_THRESHOLD,
+        'filler_frequency': FILLER_FREQUENCY,
+        'tts_speed': TTS_SPEED,
+        'emotion_detection_mode': EMOTION_DETECTION_MODE,
+        'enable_spoken_tone_converter': ENABLE_SPOKEN_TONE_CONVERTER,
+        'enable_micro_sentences': ENABLE_MICRO_SENTENCES,
+        'enable_semantic_pacing': ENABLE_SEMANTIC_PACING,
+        'default_language': DEFAULT_LANGUAGE
+    }
 
 

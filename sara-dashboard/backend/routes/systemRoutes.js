@@ -16,7 +16,10 @@ const {
   exportConfigs,
   importConfigs,
   getVoiceSettings,
-  updateVoiceSettings
+  updateVoiceSettings,
+  testVoiceSettings,
+  getHumanizationSettings,
+  updateHumanizationSettings
 } = require('../controllers/systemController');
 
 const { authMiddleware, authorize, requirePermission } = require('../middleware/authMiddleware');
@@ -47,6 +50,11 @@ router.get('/health', getSystemHealth);
 // Voice settings
 router.get('/voice-settings', getVoiceSettings);
 router.put('/voice-settings', authorize('admin'), updateVoiceSettings);
+router.post('/voice-test', authorize('admin'), testVoiceSettings);
+
+// Humanization settings
+router.get('/humanization-settings', getHumanizationSettings);
+router.put('/humanization-settings', authorize('admin'), updateHumanizationSettings);
 
 // @route   GET /api/system/export
 // @desc    Export system configurations

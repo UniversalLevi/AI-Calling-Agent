@@ -76,6 +76,15 @@ class SalesDashboardIntegration:
                 del self.cache_timestamps['voice_settings']
         except Exception:
             pass
+    
+    def _send_call_update(self, event_type: str, call_data: Dict) -> None:
+        """Send real-time call update via WebSocket"""
+        try:
+            if websocket_client and websocket_client.is_connected():
+                websocket_client.emit(event_type, call_data)
+                print(f"📡 Sent {event_type} update via WebSocket")
+        except Exception as e:
+            print(f"⚠️ WebSocket update failed: {e}")
 
     def get_voice_settings(self) -> Dict:
         """Fetch TTS voice settings from dashboard with simple caching."""
@@ -364,6 +373,8 @@ class SalesDashboardIntegration:
                 call_data['receiver'] = call_data.get('to', 'unknown')
             if 'startTime' not in call_data:
                 call_data['startTime'] = datetime.utcnow().isoformat()
+            if 'status' not in call_data:
+                call_data['status'] = 'in-progress'
             
             response = requests.post(
                 f"{self.dashboard_url}/api/calls/",
@@ -374,6 +385,10 @@ class SalesDashboardIntegration:
             
             if response.status_code in [200, 201]:
                 print(f"✅ Call start logged: {call_data.get('callId', 'unknown')}")
+                
+                # Send real-time update via WebSocket
+                self._send_call_update('callStarted', call_data)
+                
                 return True
             else:
                 print(f"⚠️ Dashboard call log failed: {response.status_code}")
@@ -398,6 +413,10 @@ class SalesDashboardIntegration:
             
             if response.status_code == 200:
                 print(f"✅ Call end logged: {call_data.get('call_sid', 'unknown')}")
+                
+                # Send real-time update via WebSocket
+                self._send_call_update('callTerminated', call_data)
+                
                 return True
             else:
                 print(f"❌ Failed to log call end: {response.status_code}")
@@ -463,8 +482,27 @@ class DashboardIntegration:
         return self.sales_integration.log_call_end(call_data)
     
     def log_call_update(self, call_data: Dict) -> bool:
-        # Legacy method - redirect to call end
-        return self.log_call_end(call_data)
+        """Log call update during conversation"""
+        try:
+            call_sid = call_data.get('call_sid', 'unknown')
+            response = requests.patch(
+                f"{self.dashboard_url}/api/calls/{call_sid}",
+                json=call_data,
+                headers=self._auth_headers(),
+                timeout=self.api_timeout
+            )
+            
+            if response.status_code == 200:
+                # Send real-time update via WebSocket
+                self._send_call_update('callUpdated', call_data)
+                return True
+            else:
+                print(f"❌ Failed to log call update: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error logging call update: {e}")
+            return False
 
 
 # Global instance

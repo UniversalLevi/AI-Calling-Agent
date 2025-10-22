@@ -30,11 +30,13 @@ except ImportError:
     # Fallback to standard logging if debug_logger not available
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
-    def log_timing(func):
+    def log_timing(name):
         """Fallback timing decorator"""
-        def wrapper(*args, **kwargs):
-            return func(*args, **kwargs)
-        return wrapper
+        def decorator(func):
+            def wrapper(*args, **kwargs):
+                return func(*args, **kwargs)
+            return wrapper
+        return decorator
 
 try:
     from .language_detector import detect_language
@@ -113,6 +115,14 @@ class EnhancedHindiTTS:
             voice = self._select_openai_voice(text)
             client = OpenAI(api_key=api_key, timeout=10.0)  # Add 10s timeout
 
+            # Get TTS speed from dashboard settings
+            try:
+                from .dashboard_integration import sales_dashboard
+                settings = sales_dashboard.get_voice_settings()
+                tts_speed = settings.get('tts_speed', 0.9)
+            except Exception:
+                tts_speed = 0.9  # Default speed
+
             audio_dir = Path("audio_files")
             audio_dir.mkdir(exist_ok=True)
             timestamp = int(time.time() * 1000)
@@ -128,7 +138,8 @@ class EnhancedHindiTTS:
                 model=model,
                 voice=voice,
                 input=optimized_text,
-                response_format="mp3"
+                response_format="mp3",
+                speed=tts_speed
             )
 
             with open(audio_file, 'wb') as f:
@@ -661,4 +672,8 @@ def speak_enhanced_hindi_bytes(text: str) -> bytes:
 def speak_mixed_enhanced_bytes(text: str) -> bytes:
     """Main function to generate enhanced mixed language speech as WAV bytes"""
     return enhanced_hindi_tts.speak_mixed_language_bytes(text)
+
+
+
+
 

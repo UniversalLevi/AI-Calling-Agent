@@ -25,17 +25,34 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
     from .config import SAMPLE_RATE, CHANNELS, PRINT_TRANSCRIPTS, PRINT_BOT_TEXT
     from .mixed_ai_brain import MixedAIBrain
-    from .mixed_stt import MixedSTTEngine
     from .enhanced_hindi_tts import speak_mixed_enhanced
     from .language_detector import detect_language
     from .realtime_vad import RealtimeConversationManager
+    
+    # Conditional import for STT
+    try:
+        from .mixed_stt import MixedSTTEngine
+        STT_AVAILABLE = True
+    except ImportError as e:
+        print(f"⚠️ Warning: STT not available: {e}")
+        MixedSTTEngine = None
+        STT_AVAILABLE = False
+        
 except ImportError:
     from config import SAMPLE_RATE, CHANNELS, PRINT_TRANSCRIPTS, PRINT_BOT_TEXT
     from mixed_ai_brain import MixedAIBrain
-    from mixed_stt import MixedSTTEngine
     from enhanced_hindi_tts import speak_mixed_enhanced
     from language_detector import detect_language
     from realtime_vad import RealtimeConversationManager
+    
+    # Conditional import for STT
+    try:
+        from mixed_stt import MixedSTTEngine
+        STT_AVAILABLE = True
+    except ImportError as e:
+        print(f"⚠️ Warning: STT not available: {e}")
+        MixedSTTEngine = None
+        STT_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -53,7 +70,11 @@ class RealtimeVoiceBot:
         # Initialize AI components
         try:
             self.ai_brain = MixedAIBrain()
-            self.stt_engine = MixedSTTEngine()
+            if STT_AVAILABLE and MixedSTTEngine:
+                self.stt_engine = MixedSTTEngine()
+            else:
+                self.stt_engine = None
+                print("⚠️ STT engine not available, voice bot will have limited functionality")
             logger.info("✅ AI components initialized")
         except Exception as e:
             logger.error(f"❌ Failed to initialize AI components: {e}")
@@ -179,6 +200,11 @@ class RealtimeVoiceBot:
         try:
             if PRINT_TRANSCRIPTS:
                 logger.info("🎤 Processing user speech...")
+            
+            # Check if STT engine is available
+            if self.stt_engine is None:
+                logger.warning("⚠️ STT engine not available, cannot transcribe speech")
+                return
             
             # Transcribe speech
             text, detected_language = self.stt_engine.transcribe_with_language(audio_data, "auto")

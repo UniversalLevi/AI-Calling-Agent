@@ -38,6 +38,18 @@ except ImportError:
 import logging
 from datetime import datetime
 
+# Import response factory for humanized responses
+try:
+    from src.responses import generate_response, get_greeting
+    from src.enhanced_hindi_tts import EnhancedHindiTTS
+    HUMANIZED_RESPONSES_AVAILABLE = True
+    print("✅ Humanized response system loaded")
+except ImportError as e:
+    print(f"⚠️ Warning: Could not import response factory: {e}")
+    generate_response = None
+    get_greeting = None
+    HUMANIZED_RESPONSES_AVAILABLE = False
+
 def setup_calling_bot_logging():
     """Set up file logging for the calling bot"""
     # Create logger
@@ -153,57 +165,24 @@ def clean_speech_result(speech_text: str) -> str:
     
     return cleaned_text
 
-def detect_language_dynamically(speech_text: str, call_sid: str = None, confidence: float = 1.0) -> str:
-    """Enhanced dynamic language detection based on user patterns and confidence"""
+def detect_language_dynamically(speech_text: str, call_sid: str = None, confidence: float = 1.0, phone_number: str = None) -> str:
+    """Enhanced dynamic language detection with phone number bias and Hindi preference"""
     if not speech_text:
-        return 'en'  # Default to English
+        return 'hi'  # Default to Hindi now
     
-    # Import detect_language function
+    # Import enhanced detection functions
     try:
-        from src.language_detector import detect_language
+        from src.language_detector import detect_language_with_phone_bias, detect_language_with_bias
     except ImportError:
-        # Fallback simple detection
-        hindi_words = ['मैं', 'आप', 'है', 'हैं', 'कर', 'करना', 'चाहिए', 'हो', 'होगा']
-        if any(word in speech_text for word in hindi_words):
-            return 'hi'
-        else:
-            return 'en'
+        # Fallback to basic detection
+        from src.language_detector import detect_language
+        return detect_language(speech_text)
     
-    # Get basic language detection
-    basic_language = detect_language(speech_text)
-    
-    # If confidence is very low, be more conservative
-    if confidence < 0.3:
-        # For low confidence, prefer English unless clearly Hindi
-        hindi_indicators = ['मैं', 'आप', 'है', 'हैं', 'कर', 'करना', 'चाहिए', 'हो', 'होगा']
-        if any(word in speech_text for word in hindi_indicators):
-            return 'hi'
-        else:
-            return 'en'
-    
-    # Enhanced mixed language detection
-    if basic_language == 'mixed':
-        # Check for specific patterns
-        hindi_words = ['मैं', 'आप', 'है', 'हैं', 'कर', 'करना', 'चाहिए', 'हो', 'होगा', 'करो', 'करना', 'बताओ', 'दो', 'लो', 'जाओ', 'आओ', 'को', 'में', 'से', 'पर', 'के', 'की', 'का', 'हैं', 'थे', 'था', 'थी', 'क्या', 'कैसे', 'कहाँ', 'कब', 'क्यों']
-        english_words = ['hotel', 'booking', 'book', 'room', 'price', 'budget', 'date', 'time', 'check', 'in', 'out', 'restaurant', 'food', 'eat', 'dinner', 'lunch', 'help', 'service', 'please', 'thank', 'you']
-        
-        hindi_count = sum(1 for word in hindi_words if word in speech_text)
-        english_count = sum(1 for word in english_words if word.lower() in speech_text.lower())
-        
-        # Dynamic decision based on ratios
-        total_words = len(speech_text.split())
-        if total_words > 0:
-            hindi_ratio = hindi_count / total_words
-            english_ratio = english_count / total_words
-            
-            if hindi_ratio > 0.3:
-                return 'hi'
-            elif english_ratio > 0.3:
-                return 'en'
-            else:
-                return 'mixed'  # Keep as mixed for Hinglish response
-    
-    return basic_language
+    # Use enhanced detection with phone number bias
+    if phone_number:
+        return detect_language_with_phone_bias(speech_text, phone_number)
+    else:
+        return detect_language_with_bias(speech_text)
 
 # Run startup cleanup
 cleanup_startup_audio()
@@ -371,6 +350,15 @@ def create_voice_bot_server():
             print(f"❌ Error initializing AI components: {e}")
             bot_app.gpt = None
         
+        # Initialize TTS instance for humanized mode
+        try:
+            if HUMANIZED_RESPONSES_AVAILABLE:  # Only if humanized mode is available
+                # Initialize TTS instance
+                tts_instance = EnhancedHindiTTS()
+                print("✅ Enhanced TTS initialized")
+        except Exception as e:
+            print(f"⚠️ Warning: Could not initialize TTS: {e}")
+        
         print("✅ Enhanced AI components ready!")
         
         # Load active product from dashboard
@@ -458,7 +446,8 @@ def create_voice_bot_server():
                     'from': caller,
                     'to': to_number,
                     'direction': 'inbound',
-                    'language': 'mixed'
+                    'language': 'mixed',
+                    'status': 'in-progress'
                 })
                 bot_app.logged_calls.add(call_sid)
         except Exception as e:
@@ -713,8 +702,13 @@ def create_voice_bot_server():
                 # Get speech confidence from request
                 speech_confidence = float(request.form.get('Confidence', '0.0'))
                 print(f"🎤 Speech confidence: {speech_confidence:.2f}")
-                # Enhanced dynamic language detection
-                detected_language = detect_language_dynamically(speech_result, call_sid, speech_confidence)
+                # Enhanced dynamic language detection with phone number
+                phone_number = None
+                if call_sid and hasattr(bot_app, 'call_language') and call_sid in bot_app.call_language:
+                    call_data = bot_app.call_language[call_sid]
+                    phone_number = call_data.get('phone_number')
+                
+                detected_language = detect_language_dynamically(speech_result, call_sid, speech_confidence, phone_number)
                 print(f"🌐 Detected language: {detected_language}")
                 # Persist per-call language
                 if call_sid:
@@ -840,8 +834,13 @@ def create_voice_bot_server():
             print(f"⚠️ Very low confidence speech: '{speech_result}' - confidence: {speech_confidence}")
             # For very low confidence, ask for clarification
             response = VoiceResponse()
-            # Detect language for appropriate clarification message
-            detected_language = detect_language_dynamically(speech_result, call_sid, speech_confidence)
+            # Detect language for appropriate clarification message with phone number
+            phone_number = None
+            if call_sid and hasattr(bot_app, 'call_language') and call_sid in bot_app.call_language:
+                call_data = bot_app.call_language[call_sid]
+                phone_number = call_data.get('phone_number')
+            
+            detected_language = detect_language_dynamically(speech_result, call_sid, speech_confidence, phone_number)
             if detected_language in ['hi', 'mixed']:
                 response.say("Maaf kariye, main samajh nahi paya. Kya aap phir se bol sakte hain?", voice=os.getenv('TWILIO_VOICE_HI', 'Polly.Aditi'), language='hi-IN')
             else:
@@ -1383,11 +1382,34 @@ def create_voice_bot_server():
                         
                         # Use AI brain for natural conversation
                         if bot_app.gpt:
-                            # Build context-aware prompt
-                            product_context = ""
-                            if hasattr(bot_app, 'active_product') and bot_app.active_product:
-                                product = bot_app.active_product
-                                product_context = f"""
+                            # Use new response factory if available, otherwise fallback to legacy
+                            if HUMANIZED_RESPONSES_AVAILABLE and generate_response:
+                                # Extract phone number from call data if available
+                                phone_number = None
+                                if hasattr(bot_app, 'call_language') and call_sid in bot_app.call_language:
+                                    call_data = bot_app.call_language[call_sid]
+                                    phone_number = call_data.get('phone_number')
+                                
+                                # Determine context based on conversation stage
+                                context = "booking"  # Default context
+                                if conversation_stage == "sales":
+                                    context = "sales"
+                                elif conversation_stage == "support":
+                                    context = "support"
+                                
+                                bot_response = generate_response(
+                                    user_text=speech_result,
+                                    call_sid=call_sid,
+                                    context=context,
+                                    phone_number=phone_number
+                                )
+                            else:
+                                # Legacy response generation
+                                # Build context-aware prompt
+                                product_context = ""
+                                if hasattr(bot_app, 'active_product') and bot_app.active_product:
+                                    product = bot_app.active_product
+                                    product_context = f"""
 You are selling: {product['name']}
 Description: {product['description']}
 Price: {product.get('price', 'Contact for pricing')}
@@ -1400,15 +1422,15 @@ IMPORTANT RULES:
 4. Be natural and conversational
 5. Respond in the same language the user speaks (English/Hindi/Hinglish)
 """
-                            
-                            system_prompt = f"""You are Sara, a friendly AI sales assistant on a phone call.
+                                
+                                system_prompt = f"""You are Sara, a friendly AI sales assistant on a phone call.
 {product_context}
 
 User said: "{speech_result}"
 
 Respond naturally and keep it brief (2-3 sentences)."""
-                            
-                            bot_response = bot_app.gpt.ask(system_prompt, detected_language)
+                                
+                                bot_response = bot_app.gpt.ask(system_prompt, detected_language)
                         else:
                             bot_response = "I'm having technical difficulties. Please try again later."
                         
