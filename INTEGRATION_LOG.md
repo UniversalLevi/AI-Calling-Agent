@@ -11,3 +11,4 @@
 | 6 | Voice Interruption System | 1454d3e | src/ultra_simple_interruption.py | ✅ PASS | ✅ PASS | Behind ENABLE_INTERRUPTION flag (disabled by default) |
 | 7 | Configuration Updates | 2bf0f78 | src/config.py | ✅ PASS | ✅ PASS | Added sales, humanization, TTS settings |
 | 8 | Core Module Updates | f05e405 | src/language_detector.py, src/mixed_stt.py, src/realtime_voice_bot.py, src/mixed_ai_brain.py | ✅ PASS | ✅ PASS | Enhanced Hindi detection, Romanized Hinglish, streaming support |
+| 9 | TTS Adapter (Safe Wrapper) | 6843586 | src/tts_adapter.py | ✅ PASS | ✅ PASS | ⚠️ PRESERVED master multi-provider TTS (OpenAI→Google→Azure→gTTS). Added safe wrapper only. Did NOT apply main's OpenAI-only refactor. |
