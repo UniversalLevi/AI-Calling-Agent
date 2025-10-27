@@ -1,10 +1,20 @@
 import os
 from typing import Optional
 
-from dotenv import load_dotenv
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
-
-load_dotenv()
+# Try to import settings manager for dynamic configuration
+try:
+    from .settings_manager import settings_manager
+    SETTINGS_MANAGER_AVAILABLE = True
+except ImportError:
+    SETTINGS_MANAGER_AVAILABLE = False
+    settings_manager = None
 
 
 # =============================================================================
@@ -37,7 +47,7 @@ WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base")
 LANGUAGE = os.getenv("LANGUAGE", "en")
 AUTO_DETECT_LANGUAGE = os.getenv("AUTO_DETECT_LANGUAGE", "true").lower() == "true"
 SUPPORTED_LANGUAGES = ["en", "hi"]  # English and Hindi
-DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE", "en")
+DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE", "hi")  # Default to Hindi
 
 
 # =============================================================================
@@ -47,7 +57,25 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 SYSTEM_PROMPT = os.getenv(
     "SYSTEM_PROMPT",
-    "You are an Female AI Calling Assistant whose only job is to handle service relatedphone conversations in a natural, human-like, empathetic, and professional manner. Always speak in short, clear sentences with a friendly and confident tone, using light human fillers sparingly but never sounding robotic or repetitive. Greet warmly at the start, explain the call’s purpose, ask one question at a time, confirm important details, and politely close at the end. Stay strictly focused on the specific purpose of the call (e.g., booking, support, survey) and never answer or engage with anything outside this boundary; if the caller asks something unrelated, simply say: “Sorry, I can’t help with that. I can only assist with [purpose of call].” If you don’t understand something, ask them to repeat or rephrase politely. Your goal is to simulate a real human phone call where the caller feels heard, respected, and helped—without ever stepping outside your defined role.",
+    """You are Sara, a friendly female AI assistant for phone calls.
+
+LANGUAGE RULES (CRITICAL):
+- If user speaks Hindi/Hinglish, respond in Romanized Hinglish (e.g., "Bilkul! Main aapki madad kar sakti hun")
+- If user speaks English, respond in English
+- NEVER respond in English when user speaks Hindi
+- Use natural Hinglish mixing: "Aapko hotel book karna hai? Main help kar sakti hun"
+- ALWAYS use Romanized Hindi (Latin script) for Hindi words, never Devanagari script
+- Examples: "Namaste" not "नमस्ते", "Aapka naam kya hai?" not "आपका नाम क्या है?"
+
+CONVERSATION STYLE:
+- Short, clear sentences (10-15 words max)
+- Warm and helpful tone
+- Ask one question at a time
+- Use natural fillers: "Haan", "Theek hai", "Bilkul", "Okay"
+
+YOUR PURPOSE: Help with bookings, recommendations, and general assistance.
+
+Stay focused on the call purpose. If asked unrelated questions, politely redirect.""",
 )
 
 
@@ -58,6 +86,31 @@ USE_COQUI_TTS = os.getenv("USE_COQUI_TTS", "false").lower() == "true"
 TTS_VOICE = os.getenv("TTS_VOICE", "en")
 HINDI_TTS_VOICE = os.getenv("HINDI_TTS_VOICE", "hi")
 ENGLISH_TTS_VOICE = os.getenv("ENGLISH_TTS_VOICE", "en")
+
+# Human-like Features Configuration
+ENABLE_NATURAL_PAUSES = os.getenv("ENABLE_NATURAL_PAUSES", "true").lower() == "true"
+ENABLE_FILLER_WORDS = os.getenv("ENABLE_FILLER_WORDS", "true").lower() == "true"
+FILLER_FREQUENCY = float(os.getenv("FILLER_FREQUENCY", "0.25"))  # 25% of responses
+PAUSE_DURATION_MS = (200, 600)  # Random pause range
+
+# Streaming Configuration
+ENABLE_STREAMING_RESPONSES = os.getenv("ENABLE_STREAMING_RESPONSES", "true").lower() == "true"
+STREAMING_CHUNK_SIZE = int(os.getenv("STREAMING_CHUNK_SIZE", "10"))  # Tokens per chunk
+
+# TTS Cache Configuration
+ENABLE_TTS_CACHE = os.getenv("ENABLE_TTS_CACHE", "true").lower() == "true"
+TTS_CACHE_DIR = os.getenv("TTS_CACHE_DIR", "tts_cache")
+PRE_GENERATE_COMMON_PHRASES = os.getenv("PRE_GENERATE_COMMON_PHRASES", "true").lower() == "true"
+
+# OpenAI TTS Voices (mapping and fallback)
+if SETTINGS_MANAGER_AVAILABLE and settings_manager:
+    OPENAI_TTS_VOICE_ENGLISH = settings_manager.get_setting('tts_voice_english', 'nova')
+    OPENAI_TTS_VOICE_HINDI = settings_manager.get_setting('tts_voice_hindi', 'shimmer')
+    OPENAI_TTS_VOICE_FALLBACK = settings_manager.get_setting('tts_voice_fallback', 'alloy')
+else:
+    OPENAI_TTS_VOICE_ENGLISH = os.getenv("OPENAI_TTS_VOICE_ENGLISH", "nova")
+    OPENAI_TTS_VOICE_HINDI = os.getenv("OPENAI_TTS_VOICE_HINDI", "shimmer")
+    OPENAI_TTS_VOICE_FALLBACK = os.getenv("OPENAI_TTS_VOICE_FALLBACK", "alloy")
 
 
 # =============================================================================
@@ -80,6 +133,7 @@ PRINT_BOT_TEXT = os.getenv("PRINT_BOT_TEXT", "true").lower() == "true"
 # ADVANCED SETTINGS
 # =============================================================================
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+DEBUG_LOG_FILE = os.getenv("DEBUG_LOG_FILE", "debug.log")
 MAX_HISTORY_LENGTH = int(os.getenv("MAX_HISTORY_LENGTH", "10"))
 AUDIO_BUFFER_SIZE = int(os.getenv("AUDIO_BUFFER_SIZE", "1024"))
 SIP_TIMEOUT = int(os.getenv("SIP_TIMEOUT", "30"))
@@ -109,6 +163,39 @@ AUDIO_WORKER_THREADS = int(os.getenv("AUDIO_WORKER_THREADS", "2"))
 ENABLE_AUDIO_COMPRESSION = os.getenv("ENABLE_AUDIO_COMPRESSION", "false").lower() == "true"
 AUDIO_COMPRESSION_QUALITY = int(os.getenv("AUDIO_COMPRESSION_QUALITY", "5"))
 
+
+# =============================================================================
+# SALES AI CONFIGURATION
+# =============================================================================
+SALES_MODE_ENABLED = os.getenv("SALES_MODE_ENABLED", "true").lower() == "true"
+ACTIVE_PRODUCT_ID = os.getenv("ACTIVE_PRODUCT_ID", "hotel_booking_service")
+SALES_API_URL = os.getenv("SALES_API_URL", "http://localhost:5000")
+QUALIFICATION_THRESHOLD = int(os.getenv("QUALIFICATION_THRESHOLD", "20"))
+SENTIMENT_ANALYSIS_ENABLED = os.getenv("SENTIMENT_ANALYSIS_ENABLED", "true").lower() == "true"
+TALK_LISTEN_TARGET_RATIO = float(os.getenv("TALK_LISTEN_TARGET_RATIO", "0.4"))
+SALES_CACHE_DURATION = int(os.getenv("SALES_CACHE_DURATION", "300"))  # 5 minutes
+
+# =============================================================================
+# HUMANIZATION CONFIGURATION
+# =============================================================================
+if SETTINGS_MANAGER_AVAILABLE and settings_manager:
+    HUMANIZED_MODE = settings_manager.get_setting('humanized_mode', False)
+    HINDI_BIAS_THRESHOLD = settings_manager.get_setting('hindi_bias_threshold', 0.8)
+    FILLER_FREQUENCY = settings_manager.get_setting('filler_frequency', 0.15)
+    TTS_SPEED = settings_manager.get_setting('tts_speed', 1.0)
+    EMOTION_DETECTION_MODE = settings_manager.get_setting('emotion_detection_mode', 'hybrid')
+    ENABLE_SPOKEN_TONE_CONVERTER = settings_manager.get_setting('enable_spoken_tone_converter', True)
+    ENABLE_MICRO_SENTENCES = settings_manager.get_setting('enable_micro_sentences', True)
+    ENABLE_SEMANTIC_PACING = settings_manager.get_setting('enable_semantic_pacing', True)
+else:
+    HUMANIZED_MODE = os.getenv("HUMANIZED_MODE", "false").lower() == "true"
+    HINDI_BIAS_THRESHOLD = float(os.getenv("HINDI_BIAS_THRESHOLD", "0.8"))  # 80% bias toward Hindi
+    FILLER_FREQUENCY = float(os.getenv("FILLER_FREQUENCY", "0.15"))  # 15% of responses
+    TTS_SPEED = float(os.getenv("TTS_SPEED", "1.0"))  # Normal speech speed for better quality
+    EMOTION_DETECTION_MODE = os.getenv("EMOTION_DETECTION_MODE", "hybrid")  # hybrid, keyword, gpt
+    ENABLE_SPOKEN_TONE_CONVERTER = os.getenv("ENABLE_SPOKEN_TONE_CONVERTER", "true").lower() == "true"
+    ENABLE_MICRO_SENTENCES = os.getenv("ENABLE_MICRO_SENTENCES", "true").lower() == "true"
+    ENABLE_SEMANTIC_PACING = os.getenv("ENABLE_SEMANTIC_PACING", "true").lower() == "true"
 
 # =============================================================================
 # DEVELOPMENT SETTINGS
@@ -173,6 +260,44 @@ def print_config_summary():
     print(f"SIP Username: {SIP_USERNAME}")
     print(f"Debug Mode: {DEBUG_MODE}")
     print(f"Test Mode: {TEST_MODE}")
+    
+    # Sales configuration
+    if SALES_MODE_ENABLED:
+        print("=" * 60)
+        print("SALES AI CONFIGURATION")
+        print("=" * 60)
+        print(f"Sales Mode: ENABLED")
+        print(f"Active Product ID: {ACTIVE_PRODUCT_ID}")
+        print(f"Sales API URL: {SALES_API_URL}")
+        print(f"Qualification Threshold: {QUALIFICATION_THRESHOLD}")
+        print(f"Sentiment Analysis: {'ENABLED' if SENTIMENT_ANALYSIS_ENABLED else 'DISABLED'}")
+        print(f"Talk-Listen Target Ratio: {TALK_LISTEN_TARGET_RATIO}")
+    else:
+        print("Sales Mode: DISABLED")
+    
     print("=" * 60)
+
+
+# =============================================================================
+# FEATURE FLAG WRAPPER
+# =============================================================================
+def is_humanized_mode_enabled() -> bool:
+    """Check if humanized mode is enabled via feature flag."""
+    return HUMANIZED_MODE
+
+
+def get_humanization_config() -> dict:
+    """Get all humanization configuration settings."""
+    return {
+        'humanized_mode': HUMANIZED_MODE,
+        'hindi_bias_threshold': HINDI_BIAS_THRESHOLD,
+        'filler_frequency': FILLER_FREQUENCY,
+        'tts_speed': TTS_SPEED,
+        'emotion_detection_mode': EMOTION_DETECTION_MODE,
+        'enable_spoken_tone_converter': ENABLE_SPOKEN_TONE_CONVERTER,
+        'enable_micro_sentences': ENABLE_MICRO_SENTENCES,
+        'enable_semantic_pacing': ENABLE_SEMANTIC_PACING,
+        'default_language': DEFAULT_LANGUAGE
+    }
 
 
