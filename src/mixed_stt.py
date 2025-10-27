@@ -8,7 +8,27 @@ This module provides speech-to-text capabilities for mixed Hindi-English convers
 from typing import Optional, Tuple
 import numpy as np
 import sounddevice as sd
-from faster_whisper import WhisperModel
+
+# Conditional import to avoid startup errors
+try:
+    from faster_whisper import WhisperModel
+    FASTER_WHISPER_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ Warning: faster_whisper not available: {e}")
+    WhisperModel = None
+    FASTER_WHISPER_AVAILABLE = False
+
+try:
+    from .debug_logger import logger, log_timing
+except Exception:
+    class _Null:
+        def __getattr__(self, *_):
+            return lambda *a, **k: None
+    logger = _Null()
+    def log_timing(name):
+        def _d(f):
+            return f
+        return _d
 
 try:
     from .config import SAMPLE_RATE, CHANNELS, RECORD_SECONDS, DEVICE_INDEX_IN, AUTO_DETECT_LANGUAGE, SUPPORTED_LANGUAGES
@@ -31,9 +51,20 @@ class MixedSTTEngine:
         Args:
             model_size: Whisper model size (tiny, small, base, medium, large)
         """
-        self.model = WhisperModel(model_size, device="cpu", compute_type="int8")
-        self.model_size = model_size
-        print(f"🎤 Mixed STT Engine initialized with {model_size} model")
+        if not FASTER_WHISPER_AVAILABLE:
+            print("❌ Error: faster_whisper not available. STT functionality disabled.")
+            self.model = None
+            self.model_size = None
+            return
+            
+        try:
+            self.model = WhisperModel(model_size, device="cpu", compute_type="int8")
+            self.model_size = model_size
+            print(f"🎤 Mixed STT Engine initialized with {model_size} model")
+        except Exception as e:
+            print(f"❌ Error initializing Whisper model: {e}")
+            self.model = None
+            self.model_size = None
 
     def record_audio(self) -> np.ndarray:
         """Record audio from microphone."""
@@ -43,6 +74,7 @@ class MixedSTTEngine:
         sd.wait()
         return audio.flatten()
 
+    @log_timing("STT transcription")
     def transcribe_with_language(self, audio: np.ndarray, language: str = None) -> Tuple[str, str]:
         """
         Transcribe audio with specified language or auto-detect.
@@ -54,6 +86,10 @@ class MixedSTTEngine:
         Returns:
             Tuple of (transcribed_text, detected_language)
         """
+        if self.model is None:
+            print("⚠️ STT model not available, returning empty result")
+            return "", "en"
+            
         if language == "auto" or language is None:
             # First transcribe without language constraint
             segments, _ = self.model.transcribe(audio, vad_filter=True)
@@ -91,6 +127,8 @@ class MixedSTTEngine:
         Returns:
             Transcribed text
         """
+        if self.model is None:
+            return ""
         text, _ = self.transcribe_with_language(audio, "auto")
         return text
 
@@ -104,6 +142,8 @@ class MixedSTTEngine:
         Returns:
             Hindi transcribed text
         """
+        if self.model is None:
+            return ""
         text, _ = self.transcribe_with_language(audio, "hi")
         return text
 
@@ -117,6 +157,8 @@ class MixedSTTEngine:
         Returns:
             English transcribed text
         """
+        if self.model is None:
+            return ""
         text, _ = self.transcribe_with_language(audio, "en")
         return text
 
