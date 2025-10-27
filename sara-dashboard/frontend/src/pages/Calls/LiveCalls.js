@@ -48,7 +48,7 @@ const LiveCalls = () => {
   const fetchActiveCalls = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('/dashboard/calls/active', {
+      const response = await axios.get('/calls/active', {
         headers: {
           'Authorization': `Bearer ${token}`
         }

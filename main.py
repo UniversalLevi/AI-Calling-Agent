@@ -24,6 +24,7 @@ import requests
 import warnings
 from flask import Flask, request, send_file
 from twilio.twiml.voice_response import VoiceResponse
+from datetime import datetime
 
 # Load environment variables from .env file
 try:
@@ -91,6 +92,62 @@ ngrok_process = None
 running_services = {}
 realtime_voice_bot = None
 twilio_realtime_integration = None
+
+# Dashboard integration
+DASHBOARD_API_URL = "http://localhost:5000/api"
+
+def log_call_to_dashboard(call_data):
+    """Log call to dashboard backend"""
+    try:
+        response = requests.post(
+            f"{DASHBOARD_API_URL}/calls",
+            json=call_data,
+            timeout=5
+        )
+        if response.status_code in [200, 201]:
+            print(f"✅ Call logged to dashboard: {call_data.get('callId', 'Unknown')}")
+            return response.json()
+        else:
+            print(f"⚠️ Dashboard logging failed: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"⚠️ Dashboard logging error: {e}")
+        return None
+
+def update_call_in_dashboard(call_id, update_data):
+    """Update call in dashboard backend"""
+    try:
+        response = requests.patch(
+            f"{DASHBOARD_API_URL}/calls/{call_id}",
+            json=update_data,
+            timeout=5
+        )
+        if response.status_code == 200:
+            print(f"✅ Call updated in dashboard: {call_id}")
+            return response.json()
+        else:
+            print(f"⚠️ Dashboard update failed: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"⚠️ Dashboard update error: {e}")
+        return None
+
+def update_call_transcript(call_id, transcript_text):
+    """Update call transcript in dashboard backend"""
+    try:
+        response = requests.patch(
+            f"{DASHBOARD_API_URL}/calls/{call_id}/transcript",
+            json={'transcript': transcript_text},
+            timeout=5
+        )
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"⚠️ Transcript update failed: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"⚠️ Transcript update error: {e}")
+        return None
 
 # =============================================================================
 # AUDIO SERVER (Built-in)
@@ -183,11 +240,24 @@ def create_voice_bot_server():
     def voice():
         response = VoiceResponse()
         
-        caller = request.form.get('From', 'Unknown')
+        from_number = request.form.get('From', 'Unknown')
+        to_number = request.form.get('To', 'Unknown')
         call_sid = request.form.get('CallSid')
-        print(f"📞 Incoming call from: {caller}")
+        print(f"📞 Incoming call from: {from_number} to {to_number}")
         print(f"🔍 DEBUG: Request form data: {dict(request.form)}")
         print(f"🔍 DEBUG: Request args: {dict(request.args)}")
+        
+        # Log call start to dashboard
+        call_data = {
+            'callId': call_sid,
+            'type': 'outbound',  # Bot is calling the user
+            'caller': from_number,  # Twilio number
+            'receiver': to_number,  # User's number
+            'status': 'in-progress',
+            'startTime': datetime.utcnow().isoformat() + 'Z',
+            'language': 'mixed'
+        }
+        log_call_to_dashboard(call_data)
         
         # Check if realtime mode is available and requested
         realtime_mode = request.args.get('realtime', 'false').lower() == 'true'
@@ -379,11 +449,17 @@ def create_voice_bot_server():
         print(f"🔍 DEBUG: Request args: {dict(request.args)}")
         response = VoiceResponse()
         speech_result = request.form.get('SpeechResult', '')
-        caller = request.form.get('From', 'Unknown')
+        from_number = request.form.get('From', 'Unknown')
         call_sid = request.form.get('CallSid')
         
-        print(f"⚡ Real-time caller {caller} said: {speech_result}")
+        print(f"⚡ Real-time caller {from_number} said: {speech_result}")
         print(f"🔍 DEBUG: bot_app.gpt exists: {bot_app.gpt is not None}")
+        
+        # Update transcript in dashboard
+        if call_sid and speech_result:
+            timestamp = datetime.utcnow().strftime('%H:%M:%S')
+            transcript_text = f"\n[{timestamp}] User: {speech_result}"
+            update_call_transcript(call_sid, transcript_text)
         
         # Check for interruption
         interruption_detected = False
@@ -417,7 +493,7 @@ def create_voice_bot_server():
                     from src.language_detector import detect_inappropriate_content, get_appropriate_response
                     
                     if detect_inappropriate_content(speech_result):
-                        print(f"⚠️ Inappropriate content detected from {caller}")
+                        print(f"⚠️ Inappropriate content detected from {from_number}")
                         bot_response = get_appropriate_response(detected_language)
                     else:
                         # Add context for Sara's natural female responses
@@ -428,6 +504,12 @@ def create_voice_bot_server():
                         print(f"⚡ Sara's natural response ({detected_language}): '{bot_response}'")
                         print(f"🔍 Response type: {type(bot_response)}")
                         print(f"🔍 Response length: {len(bot_response) if bot_response else 0}")
+                        
+                        # Log bot response to transcript
+                        if call_sid and bot_response:
+                            timestamp = datetime.utcnow().strftime('%H:%M:%S')
+                            transcript_text = f"\n[{timestamp}] Sara ({detected_language}): {bot_response}"
+                            update_call_transcript(call_sid, transcript_text)
                 else:
                     # Quick fallback with Sara's responses
                     if detected_language == 'hi':
@@ -651,6 +733,24 @@ def create_voice_bot_server():
         call_sid = request.form.get('CallSid')
         call_status = request.form.get('CallStatus')
         print(f"📊 Call {call_sid} status: {call_status}")
+        
+        # Update call in dashboard when completed
+        # Map Twilio status to our model status
+        status_mapping = {
+            'completed': 'success',
+            'busy': 'failed',
+            'failed': 'failed',
+            'no-answer': 'missed',
+            'canceled': 'failed'
+        }
+        
+        if call_status in status_mapping:
+            update_data = {
+                'status': status_mapping[call_status],
+                'endTime': datetime.utcnow().isoformat() + 'Z'
+            }
+            update_call_in_dashboard(call_sid, update_data)
+        
         return "OK"
     
     @bot_app.route('/media/<call_sid>', methods=['POST'])
@@ -859,12 +959,15 @@ def make_call(phone_number):
         )[0]
         incoming_phone_number.update(voice_url=webhook_url)
         
-        # Make the call
+        # Make the call with status callback
+        status_callback_url = f"{ngrok_url}/status"
         print("📞 Initiating call...")
         call = client.calls.create(
             to=phone_number,
             from_=twilio_number,
-            url=webhook_url
+            url=webhook_url,
+            status_callback=status_callback_url,
+            status_callback_event=['completed', 'busy', 'failed', 'no-answer', 'canceled']
         )
         
         print("✅ Call initiated!")
@@ -913,12 +1016,15 @@ def make_realtime_call(phone_number):
         )[0]
         incoming_phone_number.update(voice_url=webhook_url)
         
-        # Make the call
+        # Make the call with status callback
+        status_callback_url = f"{ngrok_url}/status"
         print("📞 Initiating real-time call...")
         call = client.calls.create(
             to=phone_number,
             from_=twilio_number,
-            url=webhook_url
+            url=webhook_url,
+            status_callback=status_callback_url,
+            status_callback_event=['completed', 'busy', 'failed', 'no-answer', 'canceled']
         )
         
         print("✅ Real-time call initiated!")

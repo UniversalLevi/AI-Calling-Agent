@@ -34,7 +34,7 @@ const CallLogs = () => {
         ...filters
       };
 
-      const response = await axios.get('/dashboard/calls', {
+      const response = await axios.get('/calls', {
         params,
         headers: {
           'Authorization': `Bearer ${token}`
