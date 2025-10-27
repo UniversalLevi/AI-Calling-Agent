@@ -755,7 +755,7 @@ def start_voice_bot_server():
             import logging
             log = logging.getLogger('werkzeug')
             log.setLevel(logging.ERROR)
-            voice_bot_app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+            voice_bot_app.run(host='0.0.0.0', port=8000, debug=False, use_reloader=False)
         
         bot_thread = threading.Thread(target=run_voice_bot_server, daemon=True)
         bot_thread.start()
@@ -763,10 +763,10 @@ def start_voice_bot_server():
         # Wait for server to start
         for i in range(15):
             try:
-                response = requests.get("http://localhost:5000/health", timeout=1)
+                response = requests.get("http://localhost:8000/health", timeout=1)
                 if response.status_code == 200:
                     running_services['voice_bot_server'] = bot_thread
-                    print("✅ Voice bot server started on port 5000!")
+                    print("✅ Voice bot server started on port 8000!")
                     return True
             except:
                 time.sleep(1)
@@ -790,7 +790,7 @@ def start_ngrok():
     
     try:
         # Start ngrok
-        ngrok_process = subprocess.Popen(['ngrok', 'http', '5000'], 
+        ngrok_process = subprocess.Popen(['ngrok', 'http', '8000'], 
                                        stdout=subprocess.DEVNULL, 
                                        stderr=subprocess.DEVNULL)
         

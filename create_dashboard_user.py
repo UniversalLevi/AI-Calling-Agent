@@ -23,7 +23,7 @@ print()
 # Create Node.js script content
 node_script = f'''
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 
 // Connect to MongoDB
 mongoose.connect('{MONGODB_URI}', {{
