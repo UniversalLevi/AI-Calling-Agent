@@ -9,3 +9,4 @@
 | 4 | Product-Specific Conversations | 3589656 | prompts/, src/prompt_manager.py, src/script_integration.py, src/conversation_memory.py | ✅ PASS | ✅ PASS | Dynamic prompts and conversation flows |
 | 5 | Response Handlers & Humanization | 79aa552 | src/responses/, src/humanizer.py, src/emotion_detector.py, src/hinglish_translations.json | ✅ PASS | ✅ PASS | Humanization and emotion detection |
 | 6 | Voice Interruption System | 1454d3e | src/ultra_simple_interruption.py | ✅ PASS | ✅ PASS | Behind ENABLE_INTERRUPTION flag (disabled by default) |
+| 7 | Configuration Updates | 2bf0f78 | src/config.py | ✅ PASS | ✅ PASS | Added sales, humanization, TTS settings |
