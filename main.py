@@ -456,26 +456,43 @@ def create_voice_bot_server():
                     # Generate audio file using available TTS providers
                     audio_file = speak_mixed_enhanced(bot_response)
                     
+                    # Create gather with barge-in BEFORE playing audio (enables interruption)
+                    gather = response.gather(
+                        input='speech',
+                        action='/process_speech_realtime',
+                        timeout=3,
+                        speech_timeout='auto',
+                        language='en-IN' if detected_language == 'en' else 'hi-IN',
+                        partial_result_callback='/partial_speech',
+                        enhanced='true',
+                        profanity_filter='false'
+                    )
+                    
                     if audio_file and audio_file.endswith('.mp3'):
-                        # Play the generated audio file
+                        # Play audio INSIDE gather with barge-in enabled
                         ngrok_url = get_ngrok_url()
                         if ngrok_url:
-                            response.play(f"{ngrok_url}/audio/{audio_file}")
-                            print(f"🎵 Playing TTS audio: {audio_file}")
+                            gather.play(f"{ngrok_url}/audio/{audio_file}")
+                            print(f"🎵 Playing TTS audio: {audio_file} (interruption enabled)")
                         else:
                             print("❌ Ngrok URL not available, using Twilio fallback")
                             if detected_language in ['hi', 'mixed']:
-                                response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
+                                gather.say(bot_response, voice='Polly.Aditi', language='hi-IN')
                             else:
-                                response.say(bot_response, voice='Polly.Joanna', language='en-IN')
+                                gather.say(bot_response, voice='Polly.Joanna', language='en-IN')
                     else:
-                        # Fallback to Twilio voices
+                        # Fallback to Twilio voices inside gather
                         if detected_language in ['hi', 'mixed']:
-                            response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
+                            gather.say(bot_response, voice='Polly.Aditi', language='hi-IN')
                         else:
-                            response.say(bot_response, voice='Polly.Joanna', language='en-IN')
+                            gather.say(bot_response, voice='Polly.Joanna', language='en-IN')
                         
                         print("⚠️ Using Twilio fallback voices")
+                    
+                    # Add brief pause after speaking
+                    gather.pause(length=0.2)
+                    
+                    response.append(gather)
                         
                 except Exception as e:
                     print(f"❌ TTS error: {e}")
@@ -484,9 +501,19 @@ def create_voice_bot_server():
                         response.say(bot_response, voice='Polly.Aditi', language='hi-IN')
                     else:
                         response.say(bot_response, voice='Polly.Joanna', language='en-IN')
-                
-                # Add a brief pause after speaking for natural conversation flow
-                response.pause(length=0.2)
+                    
+                    # Add gather after error fallback
+                    gather = response.gather(
+                        input='speech',
+                        action='/process_speech_realtime',
+                        timeout=3,
+                        speech_timeout='auto',
+                        language='en-IN' if detected_language == 'en' else 'hi-IN',
+                        partial_result_callback='/partial_speech',
+                        enhanced='true',
+                        profanity_filter='false'
+                    )
+                    response.append(gather)
                 
                 # Check for hangup/goodbye keywords
                 hangup_keywords = {
@@ -527,19 +554,19 @@ def create_voice_bot_server():
                 print(f"   Call SID: {request.form.get('CallSid', 'None')}")
                 print(f"   From: {request.form.get('From', 'None')}")
                 response.say("Sorry, there was an error. Please try again.")
-            
-            # Continue with optimized speech recognition and interruption
-            gather = response.gather(
-                input='speech',
-                action='/process_speech_realtime',
-                timeout=3,  # Shorter timeout for faster interruption detection
-                speech_timeout='auto',
-                language='en-IN' if detected_language == 'en' else 'hi-IN',
-                partial_result_callback='/partial_speech',
-                enhanced='true',  # Use enhanced speech recognition
-                profanity_filter='false'  # Don't filter speech
-            )
-            response.append(gather)
+                
+                # Add gather after error
+                gather = response.gather(
+                    input='speech',
+                    action='/process_speech_realtime',
+                    timeout=3,
+                    speech_timeout='auto',
+                    language='en-IN',
+                    partial_result_callback='/partial_speech',
+                    enhanced='true',
+                    profanity_filter='false'
+                )
+                response.append(gather)
             
         else:
             # No speech detected - optimized recovery with faster interruption
@@ -575,6 +602,12 @@ def create_voice_bot_server():
             
             bot_app.call_language[call_sid]['partial_speech_count'] += 1
             bot_app.call_language[call_sid]['last_partial'] = partial_result
+            
+            # Interruption detection - if user speaks 3+ words, mark as interruption
+            word_count = len(partial_result.strip().split())
+            if word_count >= 3 or bot_app.call_language[call_sid]['partial_speech_count'] >= 3:
+                print(f"🔔 Interruption detected! User speaking during bot response")
+                bot_app.call_language[call_sid]['interruption_detected'] = True
             
             # Faster interruption detection - trigger after just 2 partial results
             if bot_app.call_language[call_sid]['partial_speech_count'] >= 2:

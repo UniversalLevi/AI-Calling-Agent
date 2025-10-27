@@ -84,10 +84,13 @@ async function createUser() {{
 '''
 
 # Write Node.js script
-script_path = 'sara-dashboard/backend/create_user_temp.js'
-os.makedirs('sara-dashboard/backend', exist_ok=True)
+script_path = 'create_user_temp.js'
+backend_dir = 'sara-dashboard/backend'
+os.makedirs(backend_dir, exist_ok=True)
 
-with open(script_path, 'w', encoding='utf-8') as f:
+full_script_path = os.path.join(backend_dir, script_path)
+
+with open(full_script_path, 'w', encoding='utf-8') as f:
     f.write(node_script)
 
 print("📝 Script created. Running...")
@@ -98,7 +101,7 @@ import subprocess
 try:
     result = subprocess.run(
         ['node', script_path],
-        cwd='sara-dashboard/backend',
+        cwd=backend_dir,
         capture_output=True,
         text=True
     )
@@ -108,7 +111,7 @@ try:
         print("Errors:", result.stderr)
     
     # Clean up temp script
-    os.remove(script_path)
+    os.remove(full_script_path)
     print("🧹 Cleaned up temporary script")
     
     if result.returncode == 0:
