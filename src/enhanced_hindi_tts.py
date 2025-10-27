@@ -222,7 +222,7 @@ class EnhancedHindiTTS:
         """Optimize text for better TTS pronunciation using advanced Hinglish transliteration"""
         try:
             # Import the advanced Hinglish transliterator
-            from .hinglish_transliterator import optimize_text_for_sara_tts, detect_language
+            from .hinglish_transliterator import optimize_text_for_sara_tts
             
             # Detect language to determine optimization strategy
             detected_language = detect_language(text)

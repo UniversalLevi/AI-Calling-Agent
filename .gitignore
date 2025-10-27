@@ -98,3 +98,7 @@ Thumbs.db
 # Test files
 test_*.mp3
 test_*.wav
+
+#node modules
+sara-dashboard/frontend/node_modules/
+
