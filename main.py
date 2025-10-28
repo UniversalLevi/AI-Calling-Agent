@@ -517,6 +517,35 @@ def create_voice_bot_server():
                     else:
                         bot_response = f"Yes, I understand. {speech_result}"
                 
+                # Check for hangup/goodbye keywords BEFORE playing audio
+                hangup_keywords = {
+                    'en': ['bye', 'goodbye', 'good bye', 'bye bye', 'end call', 'hang up', 'hangup', 'disconnect', 'thank you bye', 'thanks bye'],
+                    'hi': ['बाय', 'बाय बाय', 'अलविदा', 'धन्यवाद', 'ठीक है बाय', 'रखती हूं', 'रखता हूं', 'चलता हूं', 'चलती हूं', 'फोन रख दो', 'रख दो'],
+                    'mixed': ['bye', 'बाय', 'बाय बाय', 'bye bye', 'alvida', 'chalta hu', 'chalti hu', 'phone rakh do']
+                }
+                
+                # Check if user wants to end call
+                speech_lower = speech_result.lower() if speech_result else ''
+                should_hangup = False
+                
+                for lang in ['en', 'hi', 'mixed']:
+                    if any(keyword in speech_lower or keyword in speech_result for keyword in hangup_keywords.get(lang, [])):
+                        should_hangup = True
+                        print(f"🔚 Hangup keyword detected: '{speech_result}'")
+                        break
+                
+                # Also check if bot response contains goodbye indicators
+                if bot_response:
+                    bot_lower = bot_response.lower()
+                    if any(word in bot_lower for word in ['bye', 'goodbye', 'alvida', 'शुभ', 'धन्यवाद']) and any(word in speech_lower for word in ['bye', 'बाय', 'नहीं']):
+                        should_hangup = True
+                        print(f"🔚 Conversation ending detected in bot response")
+                
+                if should_hangup:
+                    print("📞 Ending call gracefully...")
+                    response.hangup()
+                    return str(response)
+                
                 # Ensure we have a valid response (this runs regardless of AI provider)
                 print(f"🔍 Validating response: '{bot_response}'")
                 print(f"🔍 Validation check - not bot_response: {not bot_response}")
@@ -596,35 +625,6 @@ def create_voice_bot_server():
                         profanity_filter='false'
                     )
                     response.append(gather)
-                
-                # Check for hangup/goodbye keywords
-                hangup_keywords = {
-                    'en': ['bye', 'goodbye', 'good bye', 'bye bye', 'end call', 'hang up', 'hangup', 'disconnect', 'thank you bye', 'thanks bye'],
-                    'hi': ['बाय', 'बाय बाय', 'अलविदा', 'धन्यवाद', 'ठीक है बाय', 'रखती हूं', 'रखता हूं', 'चलता हूं', 'चलती हूं'],
-                    'mixed': ['bye', 'बाय', 'बाय बाय', 'bye bye', 'alvida', 'chalta hu', 'chalti hu']
-                }
-                
-                # Check if user wants to end call
-                speech_lower = speech_result.lower() if speech_result else ''
-                should_hangup = False
-                
-                for lang in ['en', 'hi', 'mixed']:
-                    if any(keyword in speech_lower or keyword in speech_result for keyword in hangup_keywords.get(lang, [])):
-                        should_hangup = True
-                        print(f"🔚 Hangup keyword detected: '{speech_result}'")
-                        break
-                
-                # Also check if bot response contains goodbye indicators
-                if bot_response:
-                    bot_lower = bot_response.lower()
-                    if any(word in bot_lower for word in ['bye', 'goodbye', 'alvida', 'शुभ', 'धन्यवाद']) and any(word in speech_lower for word in ['bye', 'बाय', 'नहीं']):
-                        should_hangup = True
-                        print(f"🔚 Conversation ending detected in bot response")
-                
-                if should_hangup:
-                    print("📞 Ending call gracefully...")
-                    response.hangup()
-                    return str(response)
                 
             except Exception as e:
                 print(f"❌ Real-time processing error: {e}")
