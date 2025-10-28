@@ -515,6 +515,11 @@ def create_voice_bot_server():
         print(f"⚡ Real-time caller {from_number} said: {speech_result}")
         print(f"🔍 DEBUG: bot_app.gpt exists: {bot_app.gpt is not None}")
         
+        # Reset no-response counter since user spoke
+        if call_sid and call_sid in bot_app.call_language:
+            if isinstance(bot_app.call_language[call_sid], dict):
+                bot_app.call_language[call_sid]['no_response_count'] = 0
+        
         # Update transcript in dashboard
         if call_sid and speech_result:
             timestamp = datetime.utcnow().strftime('%H:%M:%S')
@@ -741,16 +746,37 @@ def create_voice_bot_server():
                 response.append(gather)
             
         else:
-            # No speech detected - optimized recovery with faster interruption
+            # No speech detected - prompt user to check if still there
+            print("⚠️ No speech detected, prompting user")
+            
+            # Track no-response count for this call
+            if call_sid:
+                if call_sid not in bot_app.call_language:
+                    bot_app.call_language[call_sid] = {}
+                
+                no_response_count = bot_app.call_language[call_sid].get('no_response_count', 0)
+                bot_app.call_language[call_sid]['no_response_count'] = no_response_count + 1
+                
+                # After 2 no-responses, end the call gracefully
+                if no_response_count >= 2:
+                    print("📞 Ending call after multiple no-responses")
+                    response.say("Thank you for your time. Goodbye!", voice='Polly.Joanna')
+                    response.hangup()
+                    return str(response)
+            
+            # First no-response: prompt user
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=3,  # Shorter timeout for faster interruption detection
+                timeout=5,  # Give more time for user to respond
                 language='en-IN',
                 partial_result_callback='/partial_speech',
-                enhanced='true',  # Use enhanced speech recognition
-                profanity_filter='false'  # Don't filter speech
+                enhanced='true',
+                profanity_filter='false'
             )
+            
+            # Add a friendly prompt
+            gather.say("Are you still there? Kya aap sun rahe hain?", voice='Polly.Joanna')
             response.append(gather)
         
         return str(response)
