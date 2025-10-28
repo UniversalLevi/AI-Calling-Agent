@@ -13,26 +13,38 @@
 | 8 | Core Module Updates | f05e405 | src/language_detector.py, src/mixed_stt.py, src/realtime_voice_bot.py, src/mixed_ai_brain.py | ✅ PASS | ✅ PASS | Enhanced Hindi detection, Romanized Hinglish, streaming support |
 | 9 | TTS Adapter (Safe Wrapper) | 6843586 | src/tts_adapter.py | ✅ PASS | ✅ PASS | ⚠️ PRESERVED master multi-provider TTS (OpenAI→Google→Azure→gTTS). Added safe wrapper only. Did NOT apply main's OpenAI-only refactor. |
 | 10 | Cleanup & Deletions | d6ce88d | 17 files deleted (SIP, old TTS, monitors, asterisk, temp files) | ✅ PASS | ✅ PASS | Removed deprecated files. Codebase clean. |
+| 11 | Product-Aware Conversation System | 5d75c2e | src/product_service.py, src/dynamic_prompt_builder.py, main.py | ⏳ TESTING | ⏳ TESTING | Dashboard product integration with flexible scope control |
 
 ---
 
-## 🎉 INTEGRATION COMPLETE! 
+## 🎯 PHASE 11: PRODUCT-AWARE CONVERSATION SYSTEM
 
-**Status**: ✅ **100% SUCCESSFUL**
+**Status**: ⏳ **TESTING REQUIRED**
 
-**Final TTS Hash**: `aec36b96dd171b59a44dcb524df78f2dfd09a7b4` (UNCHANGED from baseline!)
+**New Features Added**:
+- ✅ ProductService: Fetch active product from dashboard with 60s cache
+- ✅ DynamicPromptBuilder: Generate product-specific AI prompts
+- ✅ Product-specific greetings based on active dashboard product
+- ✅ Flexible scope control (answer general questions, redirect naturally)
+- ✅ Product metadata in call logs for analytics
+- ✅ Conversation history tracking per call
+- ✅ Supports AIDA and regular Product models
 
-**All Features Integrated**:
-- ✅ Dashboard (Frontend + Backend + Python Integration)
-- ✅ Product-Specific Conversations
-- ✅ Response Handlers & Humanization
-- ✅ Voice Interruption System
-- ✅ Configuration Updates
-- ✅ Core Module Updates
-- ✅ Safe TTS Adapter (multi-provider preserved)
-- ✅ Codebase Cleanup
+**Integration Points**:
+- `/voice` endpoint: Fetches active product, generates custom greeting
+- `/process_speech_realtime`: Uses dynamic prompts with product context
+- Dashboard logging: Includes product_name, product_id, product_category
 
-**Total Commits**: 11 phases (0-10)
-**Safe Checkpoints**: 11 tags
+**Testing Checklist**:
+1. [ ] Dashboard backend running with active product set
+2. [ ] Call starts with product-specific greeting
+3. [ ] Conversation stays focused on product
+4. [ ] General questions answered + redirected naturally
+5. [ ] Off-topic questions handled with warm redirects
+6. [ ] Call logs show product metadata
+7. [ ] Fallback works if no active product
+
+**Final TTS Hash**: `aec36b96dd171b59a44dcb524df78f2dfd09a7b4` (UNCHANGED - TTS preserved!)
+
+**Total Commits**: 12 phases (0-11)
 **TTS Quality**: PERFECT - Robust multi-provider fallback maintained
-**Zero Regressions**: All functionality working
