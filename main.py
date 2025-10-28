@@ -84,6 +84,16 @@ except ImportError as e:
     REALTIME_AVAILABLE = False
     print(f"⚠️ Realtime voice capabilities not available: {e}")
 
+# Import product-aware conversation components
+try:
+    from src.product_service import get_product_service
+    from src.dynamic_prompt_builder import get_prompt_builder
+    PRODUCT_AWARE = True
+    print("✅ Product-aware conversation capabilities available")
+except ImportError as e:
+    PRODUCT_AWARE = False
+    print(f"⚠️ Product-aware conversation not available: {e}")
+
 # Global variables
 voice_bot_app = None
 audio_server_app = None
@@ -91,6 +101,9 @@ ngrok_process = None
 running_services = {}
 realtime_voice_bot = None
 twilio_realtime_integration = None
+product_service = None
+prompt_builder = None
+call_sessions = {}  # Store product and conversation data per call_sid
 
 # Dashboard integration
 DASHBOARD_API_URL = "http://localhost:5000/api"
@@ -205,11 +218,27 @@ def create_voice_bot_server():
         # Per-call language state (CallSid -> 'en' | 'hi' | 'mixed')
         bot_app.call_language = {}
         
+        # Initialize product-aware conversation components
+        if PRODUCT_AWARE:
+            try:
+                global product_service, prompt_builder
+                product_service = get_product_service()
+                prompt_builder = get_prompt_builder()
+                bot_app.product_service = product_service
+                bot_app.prompt_builder = prompt_builder
+                print("✅ Product-aware conversation system initialized")
+            except Exception as pe:
+                print(f"⚠️ Product service initialization error: {pe}")
+                bot_app.product_service = None
+                bot_app.prompt_builder = None
+        
     except Exception as e:
         print(f"❌ Error initializing AI components: {e}")
         bot_app.stt = None
         bot_app.gpt = None
         bot_app.enhanced_tts = None
+        bot_app.product_service = None
+        bot_app.prompt_builder = None
     
     @bot_app.route('/health')
     def bot_health():
@@ -246,18 +275,6 @@ def create_voice_bot_server():
         print(f"🔍 DEBUG: Request form data: {dict(request.form)}")
         print(f"🔍 DEBUG: Request args: {dict(request.args)}")
         
-        # Log call start to dashboard
-        call_data = {
-            'callId': call_sid,
-            'type': 'outbound',  # Bot is calling the user
-            'caller': from_number,  # Twilio number
-            'receiver': to_number,  # User's number
-            'status': 'in-progress',
-            'startTime': datetime.utcnow().isoformat() + 'Z',
-            'language': 'mixed'
-        }
-        log_call_to_dashboard(call_data)
-        
         # Check if realtime mode is available and requested
         realtime_mode = request.args.get('realtime', 'false').lower() == 'true'
         print(f"🔍 Realtime mode requested: {realtime_mode}")
@@ -267,8 +284,52 @@ def create_voice_bot_server():
             # Use enhanced real-time conversation with shorter timeouts
             print("🚀 Starting realtime conversation mode")
             
-            # Send natural female greeting using enhanced TTS
-            greeting = "Hi there!, I am Sara. How can I help you today?"
+            # Fetch active product for product-aware conversation
+            active_product = None
+            if PRODUCT_AWARE and hasattr(bot_app, 'product_service') and bot_app.product_service:
+                try:
+                    active_product = bot_app.product_service.get_active_product()
+                    print(f"🛍️ Active product: {active_product.get('name') if active_product else 'None'}")
+                except Exception as e:
+                    print(f"⚠️ Error fetching active product: {e}")
+            
+            # Store product in call session
+            if call_sid:
+                global call_sessions
+                call_sessions[call_sid] = {
+                    'product': active_product,
+                    'messages': [],
+                    'redirect_count': 0
+                }
+            
+            # Log call start to dashboard with product metadata
+            call_data = {
+                'callId': call_sid,
+                'type': 'outbound',  # Bot is calling the user
+                'caller': from_number,  # Twilio number
+                'receiver': to_number,  # User's number
+                'status': 'in-progress',
+                'startTime': datetime.utcnow().isoformat() + 'Z',
+                'language': 'mixed',
+                'metadata': {}
+            }
+            
+            # Add product context if available
+            if active_product:
+                call_data['metadata']['product_name'] = active_product.get('name', 'Unknown')
+                call_data['metadata']['product_id'] = active_product.get('product_id', '')
+                call_data['metadata']['product_category'] = active_product.get('category', '')
+                print(f"📊 Call logged with product: {active_product.get('name')}")
+            
+            log_call_to_dashboard(call_data)
+            
+            # Generate product-specific greeting
+            if active_product:
+                greeting = active_product.get('greeting') or f"Namaste! Main Sara hun. Aapko {active_product.get('name', 'our product')} mein madad chahiye?"
+                print(f"🎯 Using product-specific greeting for: {active_product.get('name')}")
+            else:
+                greeting = "Hi there!, I am Sara. How can I help you today?"
+                print("📢 Using generic greeting (no active product)")
             
             try:
                 from src.enhanced_hindi_tts import speak_mixed_enhanced
@@ -495,14 +556,44 @@ def create_voice_bot_server():
                         print(f"⚠️ Inappropriate content detected from {from_number}")
                         bot_response = get_appropriate_response(detected_language)
                     else:
-                        # Add context for Sara's natural female responses
-                        enhanced_prompt = f"You are Sara, a helpful female AI assistant. Respond naturally and conversationally in {detected_language}. Be warm, friendly, and helpful. Keep responses concise but natural. Always maintain a professional and respectful tone."
+                        # Get product and conversation context from session
+                        session = call_sessions.get(call_sid, {})
+                        active_product = session.get('product')
+                        conversation_history = session.get('messages', [])
+                        
+                        # Build dynamic prompt with product context
+                        if PRODUCT_AWARE and hasattr(bot_app, 'prompt_builder') and bot_app.prompt_builder:
+                            try:
+                                enhanced_prompt = bot_app.prompt_builder.build_prompt(
+                                    product=active_product,
+                                    conversation_history=conversation_history,
+                                    detected_language=detected_language
+                                )
+                                print(f"🔍 Using product-aware dynamic prompt (product: {active_product.get('name') if active_product else 'generic'})")
+                            except Exception as e:
+                                print(f"⚠️ Prompt builder error: {e}")
+                                enhanced_prompt = f"You are Sara, a helpful female AI assistant. Respond naturally and conversationally in {detected_language}. Be warm, friendly, and helpful. Keep responses concise but natural. Always maintain a professional and respectful tone."
+                        else:
+                            enhanced_prompt = f"You are Sara, a helpful female AI assistant. Respond naturally and conversationally in {detected_language}. Be warm, friendly, and helpful. Keep responses concise but natural. Always maintain a professional and respectful tone."
+                        
                         print(f"🔍 Calling AI with prompt: {enhanced_prompt[:100]}...")
                         print(f"🔍 User input: {speech_result}")
                         bot_response = bot_app.gpt.ask(f"{enhanced_prompt}\n\nUser: {speech_result}", detected_language)
                         print(f"⚡ Sara's natural response ({detected_language}): '{bot_response}'")
                         print(f"🔍 Response type: {type(bot_response)}")
                         print(f"🔍 Response length: {len(bot_response) if bot_response else 0}")
+                        
+                        # Update conversation history in session
+                        if call_sid and call_sid in call_sessions:
+                            call_sessions[call_sid]['messages'].append({
+                                'role': 'user',
+                                'content': speech_result
+                            })
+                            if bot_response:
+                                call_sessions[call_sid]['messages'].append({
+                                    'role': 'assistant',
+                                    'content': bot_response
+                                })
                         
                         # Log bot response to transcript
                         if call_sid and bot_response:
