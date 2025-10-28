@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 AI Calling Bot - Complete Self-Contained Launcher
 ===============================================
