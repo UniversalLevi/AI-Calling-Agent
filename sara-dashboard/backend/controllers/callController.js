@@ -125,6 +125,23 @@ const createCallLog = asyncHandler(async (req, res) => {
 const updateCallLog = asyncHandler(async (req, res) => {
   let call;
   
+  // Calculate duration if endTime is provided
+  if (req.body.endTime) {
+    // Find the call first to get startTime
+    let existingCall;
+    if (req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+      existingCall = await CallLog.findById(req.params.id);
+    } else {
+      existingCall = await CallLog.findOne({ callId: req.params.id });
+    }
+    
+    if (existingCall && existingCall.startTime) {
+      const startTime = new Date(existingCall.startTime);
+      const endTime = new Date(req.body.endTime);
+      req.body.duration = Math.floor((endTime - startTime) / 1000); // duration in seconds
+    }
+  }
+  
   // Try to find by MongoDB _id first, then by callId
   if (req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
     call = await CallLog.findByIdAndUpdate(

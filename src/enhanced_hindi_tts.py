@@ -30,36 +30,17 @@ class EnhancedHindiTTS:
         """Initialize available TTS providers based on .env configuration"""
         
         # Get preferred TTS provider from .env
-        preferred_provider = os.getenv('TTS_PROVIDER', 'twilio').lower()
+        preferred_provider = os.getenv('TTS_PROVIDER', 'openai').lower()
         print(f"🎯 Preferred TTS provider from .env: {preferred_provider}")
         
-        # Add preferred provider first if available
-        if preferred_provider == 'azure' and self._check_azure_credentials():
-            self.providers.append('azure')
-            print("🔊 Azure TTS available (Preferred)")
-        elif preferred_provider == 'google' and self._check_google_credentials():
-            self.providers.append('google')
-            print("🔊 Google Cloud TTS available (Preferred)")
-        elif preferred_provider == 'openai' and self._check_openai_credentials():
+        # Only add OpenAI if available (skip Azure/Google as they're not properly configured)
+        if self._check_openai_credentials():
             self.providers.append('openai')
-            print("🔊 OpenAI TTS available (Preferred)")
+            print("🔊 OpenAI TTS available")
         
-        # Add other available providers as fallbacks
-        if 'azure' not in self.providers and self._check_azure_credentials():
-            self.providers.append('azure')
-            print("🔊 Azure TTS available (Fallback)")
-        
-        if 'google' not in self.providers and self._check_google_credentials():
-            self.providers.append('google')
-            print("🔊 Google Cloud TTS available (Fallback)")
-        
-        if 'openai' not in self.providers and self._check_openai_credentials():
-            self.providers.append('openai')
-            print("🔊 OpenAI TTS available (Fallback)")
-        
-        # Always have gTTS as final fallback
+        # Always have gTTS as fallback
         self.providers.append('gtts')
-        print("🔊 gTTS available (Final Fallback)")
+        print("🔊 gTTS available (Fallback)")
         
         print(f"🎤 Hindi TTS providers available: {len(self.providers)}")
     
