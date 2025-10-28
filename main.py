@@ -323,12 +323,12 @@ def create_voice_bot_server():
             
             log_call_to_dashboard(call_data)
             
-            # Generate product-specific greeting
+            # Generate product-specific greeting (natural and non-pushy)
             if active_product:
-                greeting = active_product.get('greeting') or f"Namaste! Main Sara hun. Aapko {active_product.get('name', 'our product')} mein madad chahiye?"
+                greeting = active_product.get('greeting') or f"Namaste! Main Sara hun. Kaise madad kar sakti hun?"
                 print(f"🎯 Using product-specific greeting for: {active_product.get('name')}")
             else:
-                greeting = "Hi there!, I am Sara. How can I help you today?"
+                greeting = "Hi there! I am Sara. How can I help you today?"
                 print("📢 Using generic greeting (no active product)")
             
             try:
@@ -363,7 +363,7 @@ def create_voice_bot_server():
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=5,  # Increased timeout to allow more time for speech
+                timeout=8,  # Generous timeout for natural conversation
                 speech_timeout='auto',
                 language='en-IN',  # Start with English, will switch based on detection
                 partial_result_callback='/partial_speech',
@@ -483,7 +483,7 @@ def create_voice_bot_server():
             gather = response.gather(
                 input='speech',
                 action='/process_speech',
-                timeout=10,
+                timeout=8,
                 speech_timeout='auto',
                 language=next_language_code
             )
@@ -494,7 +494,7 @@ def create_voice_bot_server():
             gather = response.gather(
                 input='speech',
                 action='/process_speech',
-                timeout=10,
+                timeout=8,
                 language='en-IN'
             )
             response.append(gather)
@@ -666,7 +666,7 @@ def create_voice_bot_server():
                     gather = response.gather(
                         input='speech',
                         action='/process_speech_realtime',
-                        timeout=3,
+                        timeout=8,
                         speech_timeout='auto',
                         language='en-IN' if detected_language == 'en' else 'hi-IN',
                         partial_result_callback='/partial_speech',
@@ -712,7 +712,7 @@ def create_voice_bot_server():
                     gather = response.gather(
                         input='speech',
                         action='/process_speech_realtime',
-                        timeout=3,
+                        timeout=8,
                         speech_timeout='auto',
                         language='en-IN' if detected_language == 'en' else 'hi-IN',
                         partial_result_callback='/partial_speech',
@@ -736,7 +736,7 @@ def create_voice_bot_server():
                 gather = response.gather(
                     input='speech',
                     action='/process_speech_realtime',
-                    timeout=3,
+                    timeout=8,
                     speech_timeout='auto',
                     language='en-IN',
                     partial_result_callback='/partial_speech',
@@ -768,7 +768,7 @@ def create_voice_bot_server():
             gather = response.gather(
                 input='speech',
                 action='/process_speech_realtime',
-                timeout=5,  # Give more time for user to respond
+                timeout=8,  # Give more time for user to respond
                 language='en-IN',
                 partial_result_callback='/partial_speech',
                 enhanced='true',
