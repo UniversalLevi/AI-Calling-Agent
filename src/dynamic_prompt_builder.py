@@ -150,6 +150,16 @@ REMEMBER: You are Sara, warm and helpful. Stay focused on {product.get('name', '
         if action_prompts:
             aida_text += f"\n\nACTION PROMPTS:\n" + '\n'.join(f"  - {p}" for p in action_prompts[:2])
         
+        # Build pricing section
+        price_text = ""
+        price = product.get('price')
+        if price:
+            currency = product.get('currency', 'INR')
+            if isinstance(price, (int, float)):
+                price_text = f"\nPrice: {currency} {price}"
+            elif isinstance(price, str) and price != "Contact us for pricing":
+                price_text = f"\nPrice: {price}"
+        
         # Combine product context
         brand_text = f" from {brand}" if brand else ""
         tagline_text = f"\nTagline: {tagline}" if tagline else ""
@@ -161,9 +171,9 @@ REMEMBER: You are Sara, warm and helpful. Stay focused on {product.get('name', '
 ╚══════════════════════════════════════════════════════╝
 
 Product: {name}{brand_text}
-Category: {category}{tagline_text}{desc_text}
+Category: {category}{tagline_text}{desc_text}{price_text}
 
-YOUR PRIMARY GOAL: Help users with {name}.{features_text}{objections_text}{aida_text}
+YOUR PRIMARY GOAL: Help users with {name}. When asked about price, ALWAYS provide the exact price mentioned above.{features_text}{objections_text}{aida_text}
 """
         
         return context.strip()
