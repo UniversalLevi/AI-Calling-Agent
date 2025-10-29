@@ -23,7 +23,7 @@ import requests
 import warnings
 from flask import Flask, request, send_file
 from twilio.twiml.voice_response import VoiceResponse
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Load environment variables from .env file
 try:
@@ -309,7 +309,7 @@ def create_voice_bot_server():
                 'caller': from_number,  # Twilio number
                 'receiver': to_number,  # User's number
                 'status': 'in-progress',
-                'startTime': datetime.utcnow().isoformat() + 'Z',
+                'startTime': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
                 'language': 'mixed',
                 'metadata': {}
             }
@@ -522,7 +522,7 @@ def create_voice_bot_server():
         
         # Update transcript in dashboard
         if call_sid and speech_result:
-            timestamp = datetime.utcnow().strftime('%H:%M:%S')
+            timestamp = datetime.now(timezone.utc).strftime('%H:%M:%S')
             transcript_text = f"\n[{timestamp}] User: {speech_result}"
             update_call_transcript(call_sid, transcript_text)
         
@@ -602,7 +602,7 @@ def create_voice_bot_server():
                         
                         # Log bot response to transcript
                         if call_sid and bot_response:
-                            timestamp = datetime.utcnow().strftime('%H:%M:%S')
+                            timestamp = datetime.now(timezone.utc).strftime('%H:%M:%S')
                             transcript_text = f"\n[{timestamp}] Sara ({detected_language}): {bot_response}"
                             update_call_transcript(call_sid, transcript_text)
                 else:
@@ -863,7 +863,7 @@ def create_voice_bot_server():
         if call_status in status_mapping:
             update_data = {
                 'status': status_mapping[call_status],
-                'endTime': datetime.utcnow().isoformat() + 'Z'
+                'endTime': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
             }
             update_call_in_dashboard(call_sid, update_data)
         
