@@ -163,10 +163,10 @@ class EnhancedHindiTTS:
             import openai
             
             api_key = os.getenv('OPENAI_API_KEY')
-            model = os.getenv('OPENAI_TTS_MODEL', 'tts-1')
+            model = os.getenv('OPENAI_TTS_MODEL', 'tts-1-hd')  # HD for higher quality, more natural sound
             
             # Use female voice for Sara
-            voice = os.getenv('OPENAI_TTS_VOICE', 'nova')  # Nova is a female voice
+            voice = os.getenv('OPENAI_TTS_VOICE', 'nova')  # Nova: warm, expressive female voice
             
             client = openai.OpenAI(api_key=api_key)
             
@@ -179,12 +179,12 @@ class EnhancedHindiTTS:
             # Optimize text for better Hinglish pronunciation
             optimized_text = self._optimize_text_for_tts(text)
             
-            # Generate speech with optimized settings
+            # Generate speech with optimized settings for natural human-like voice
             response = client.audio.speech.create(
-                model=model,
-                voice=voice,
+                model=model,  # tts-1-hd for higher quality
+                voice=voice,  # nova: warm & expressive
                 input=optimized_text,
-                speed=1.0,  # Normal speed for natural speech
+                speed=0.95,  # Slightly slower for clarity and natural pacing
                 response_format="mp3"
             )
             
