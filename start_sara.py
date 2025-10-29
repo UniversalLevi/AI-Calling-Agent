@@ -1,6 +1,12 @@
 """
 Sara Calling Bot with Dashboard Launcher
 Starts both the calling bot and the dashboard with a single command
+
+Features:
+- Auto-checks and installs Python dependencies
+- Starts Node.js dashboard (frontend + backend)
+- Provides startup instructions for calling bot
+- Graceful shutdown on Ctrl+C
 """
 
 import os
@@ -11,6 +17,21 @@ from datetime import datetime
 import signal
 import atexit
 import threading
+
+# Check and install dependencies first
+print("🔧 Checking Python dependencies...")
+try:
+    from dependency_checker import run_full_check
+    
+    # Run dependency check (auto-install if missing)
+    if not run_full_check(auto_install=True, verbose=True):
+        print("\n❌ Dependency check failed. Please fix the issues above and try again.")
+        sys.exit(1)
+except ImportError:
+    print("⚠️  Dependency checker not found. Proceeding without checks...")
+except Exception as e:
+    print(f"⚠️  Dependency check error: {e}")
+    print("   Proceeding anyway...")
 
 # Process list to track for cleanup
 processes = []
