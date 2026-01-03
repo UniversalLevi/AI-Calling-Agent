@@ -176,6 +176,26 @@ TALK_LISTEN_TARGET_RATIO = float(os.getenv("TALK_LISTEN_TARGET_RATIO", "0.4"))
 SALES_CACHE_DURATION = int(os.getenv("SALES_CACHE_DURATION", "300"))  # 5 minutes
 
 # =============================================================================
+# WHATSAPP BUSINESS API CONFIGURATION
+# =============================================================================
+# Feature Flags
+ENABLE_WHATSAPP = os.getenv("ENABLE_WHATSAPP", "false").lower() == "true"
+ENABLE_WHATSAPP_PAYMENT_LINKS = os.getenv("ENABLE_WHATSAPP_PAYMENT_LINKS", "false").lower() == "true"
+ENABLE_WHATSAPP_FOLLOWUPS = os.getenv("ENABLE_WHATSAPP_FOLLOWUPS", "false").lower() == "true"
+
+# WhatsApp Service Configuration
+WHATSAPP_SERVICE_URL = os.getenv("WHATSAPP_SERVICE_URL", "http://localhost:8001")
+WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
+WHATSAPP_BUSINESS_ACCOUNT_ID = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID", "")
+WHATSAPP_WEBHOOK_VERIFY_TOKEN = os.getenv("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "")
+
+# Razorpay Configuration
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
+RAZORPAY_CALLBACK_URL = os.getenv("RAZORPAY_CALLBACK_URL", "")
+
+# =============================================================================
 # HUMANIZATION CONFIGURATION
 # =============================================================================
 if SETTINGS_MANAGER_AVAILABLE and settings_manager:
@@ -298,6 +318,46 @@ def get_humanization_config() -> dict:
         'enable_micro_sentences': ENABLE_MICRO_SENTENCES,
         'enable_semantic_pacing': ENABLE_SEMANTIC_PACING,
         'default_language': DEFAULT_LANGUAGE
+    }
+
+
+# =============================================================================
+# WHATSAPP FEATURE FLAG HELPERS
+# =============================================================================
+def is_whatsapp_enabled() -> bool:
+    """Check if WhatsApp integration is enabled."""
+    return ENABLE_WHATSAPP
+
+
+def is_whatsapp_payment_links_enabled() -> bool:
+    """Check if WhatsApp payment links feature is enabled."""
+    return ENABLE_WHATSAPP and ENABLE_WHATSAPP_PAYMENT_LINKS
+
+
+def is_whatsapp_followups_enabled() -> bool:
+    """Check if WhatsApp followups feature is enabled."""
+    return ENABLE_WHATSAPP and ENABLE_WHATSAPP_FOLLOWUPS
+
+
+def is_whatsapp_configured() -> bool:
+    """Check if WhatsApp credentials are properly configured."""
+    return bool(WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID)
+
+
+def is_razorpay_configured() -> bool:
+    """Check if Razorpay credentials are properly configured."""
+    return bool(RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET)
+
+
+def get_whatsapp_config() -> dict:
+    """Get all WhatsApp configuration settings."""
+    return {
+        'enabled': ENABLE_WHATSAPP,
+        'payment_links_enabled': ENABLE_WHATSAPP_PAYMENT_LINKS,
+        'followups_enabled': ENABLE_WHATSAPP_FOLLOWUPS,
+        'service_url': WHATSAPP_SERVICE_URL,
+        'configured': is_whatsapp_configured(),
+        'razorpay_configured': is_razorpay_configured()
     }
 
 

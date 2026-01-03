@@ -121,6 +121,28 @@ except ImportError as e:
     PRODUCT_AWARE = False
     print(f"⚠️ Product-aware conversation not available: {e}")
 
+# Import WhatsApp integration
+try:
+    from src.whatsapp_integration import (
+        trigger_payment_link,
+        trigger_followup,
+        detect_payment_link_intent,
+        detect_payment_confirmation_intent,
+        detect_number_confirmation,
+        extract_phone_from_text,
+        is_whatsapp_enabled,
+        is_payment_links_enabled,
+        get_whatsapp_status
+    )
+    WHATSAPP_AVAILABLE = True
+    if is_whatsapp_enabled():
+        print("✅ WhatsApp integration available and ENABLED")
+    else:
+        print("⚠️ WhatsApp integration available but DISABLED (set ENABLE_WHATSAPP=true to enable)")
+except ImportError as e:
+    WHATSAPP_AVAILABLE = False
+    print(f"⚠️ WhatsApp integration not available: {e}")
+
 # Global variables
 voice_bot_app = None
 audio_server_app = None
@@ -320,14 +342,19 @@ def create_voice_bot_server():
                 except Exception as e:
                     print(f"⚠️ Error fetching active product: {e}")
             
-            # Store product in call session
+            # Store product in call session along with caller's phone number
             if call_sid:
                 global call_sessions
                 call_sessions[call_sid] = {
                     'product': active_product,
                     'messages': [],
-                    'redirect_count': 0
+                    'redirect_count': 0,
+                    'caller_phone': to_number,  # User's phone number (we called them)
+                    'customer_name': None,  # Will be extracted from conversation
+                    'payment_link_sent': False,
+                    'awaiting_number_confirmation': False  # For payment link flow
                 }
+                print(f"📱 Caller phone stored: {to_number[:6]}****{to_number[-4:] if len(to_number) > 10 else to_number}")
             
             # Log call start to dashboard with product metadata
             call_data = {
@@ -626,12 +653,113 @@ def create_voice_bot_server():
                                     'role': 'assistant',
                                     'content': bot_response
                                 })
+                            
+                            # Try to extract customer name from user's speech
+                            # Common patterns: "mera naam X hai", "my name is X", "I am X"
+                            if not call_sessions[call_sid].get('customer_name'):
+                                import re
+                                name_patterns = [
+                                    r'(?:my name is|i am|this is|naam hai|mera naam|naam)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)',
+                                    r'^([A-Z][a-z]+)(?:\s+(?:here|speaking|hai|hun|hoon))?$',
+                                ]
+                                for pattern in name_patterns:
+                                    match = re.search(pattern, speech_result, re.IGNORECASE)
+                                    if match:
+                                        name = match.group(1).strip().title()
+                                        if len(name) > 2 and name.lower() not in ['yes', 'no', 'hello', 'hi', 'haan', 'nahi']:
+                                            call_sessions[call_sid]['customer_name'] = name
+                                            print(f"👤 Customer name extracted: {name}")
+                                            break
                         
                         # Log bot response to transcript
                         if call_sid and bot_response:
                             timestamp = datetime.now(timezone.utc).strftime('%H:%M:%S')
                             transcript_text = f"\n[{timestamp}] Sara ({detected_language}): {bot_response}"
                             update_call_transcript(call_sid, transcript_text)
+                        
+                        # =====================================================
+                        # WHATSAPP INTEGRATION - Auto-send UPI payment link
+                        # Uses caller's phone number automatically (no need to ask)
+                        # =====================================================
+                        if WHATSAPP_AVAILABLE and is_payment_links_enabled():
+                            try:
+                                session = call_sessions.get(call_sid, {})
+                                
+                                # Get caller's phone from session (auto-extracted from Twilio)
+                                caller_phone = session.get('caller_phone') or request.form.get('To', '')
+                                
+                                # Check if user is asking for payment link
+                                intent_detected = detect_payment_link_intent(speech_result, detected_language)
+                                
+                                if intent_detected and not session.get('payment_link_sent'):
+                                    print(f"📱 WhatsApp: User requested payment link")
+                                    print(f"📱 WhatsApp: Using caller's phone: {caller_phone[:6]}****{caller_phone[-4:]}")
+                                    
+                                    # Get product info from session
+                                    active_product = session.get('product', {})
+                                    product_name = active_product.get('name', 'Service') if active_product else 'Service'
+                                    
+                                    # Extract amount from product or use default
+                                    product_price = active_product.get('price', 50000) if active_product else 50000  # Default ₹500
+                                    
+                                    # Get customer name from session or use default
+                                    # Ensure it's always a valid string (handle None case)
+                                    customer_name = session.get('customer_name') or 'Customer'
+                                    if not customer_name or not isinstance(customer_name, str):
+                                        customer_name = 'Customer'
+                                    
+                                    # Fire-and-forget: Send UPI payment link via WhatsApp
+                                    # Uses the caller's phone automatically - no need to ask!
+                                    trigger_payment_link(
+                                        phone=caller_phone,  # Auto-extracted caller's number
+                                        amount=product_price,  # Amount in paise
+                                        customer_name=customer_name,
+                                        product_name=product_name,
+                                        call_id=call_sid,
+                                        language=detected_language,
+                                        fire_and_forget=True  # Non-blocking
+                                    )
+                                    print(f"📱 WhatsApp: UPI payment link sent to {caller_phone[-4:]} for {product_name}")
+                                    
+                                    # Mark in session that link was sent
+                                    if call_sid in call_sessions:
+                                        call_sessions[call_sid]['payment_link_sent'] = True
+                                        call_sessions[call_sid]['payment_link_sent_at'] = datetime.now(timezone.utc).isoformat()
+                                        call_sessions[call_sid]['payment_link_phone'] = caller_phone
+                                
+                                # Check if user confirms payment intent -> auto-send link
+                                elif detect_payment_confirmation_intent(speech_result, detected_language):
+                                    if not session.get('payment_link_sent'):
+                                        print(f"📱 WhatsApp: User confirmed payment, auto-sending UPI link")
+                                        print(f"📱 WhatsApp: Using caller's phone: {caller_phone[:6]}****{caller_phone[-4:]}")
+                                        
+                                        active_product = session.get('product', {})
+                                        product_name = active_product.get('name', 'Service') if active_product else 'Service'
+                                        product_price = active_product.get('price', 50000) if active_product else 50000
+                                        
+                                        # Ensure customer_name is always a valid string
+                                        customer_name = session.get('customer_name') or 'Customer'
+                                        if not customer_name or not isinstance(customer_name, str):
+                                            customer_name = 'Customer'
+                                        
+                                        trigger_payment_link(
+                                            phone=caller_phone,  # Auto-extracted caller's number
+                                            amount=product_price,
+                                            customer_name=customer_name,
+                                            product_name=product_name,
+                                            call_id=call_sid,
+                                            language=detected_language,
+                                            fire_and_forget=True
+                                        )
+                                        print(f"📱 WhatsApp: UPI payment link sent for {product_name}")
+                                        
+                                        if call_sid in call_sessions:
+                                            call_sessions[call_sid]['payment_link_sent'] = True
+                                            call_sessions[call_sid]['payment_link_phone'] = caller_phone
+                            except Exception as wa_error:
+                                print(f"⚠️ WhatsApp trigger error (non-blocking): {wa_error}")
+                                # Don't let WhatsApp errors affect the call flow
+                        # =====================================================
                 else:
                     # Quick fallback with Sara's responses
                     if detected_language == 'hi':
@@ -665,6 +793,41 @@ def create_voice_bot_server():
                 
                 if should_hangup:
                     print("📞 Ending call gracefully...")
+                    
+                    # =====================================================
+                    # WHATSAPP INTEGRATION - Send call followup
+                    # =====================================================
+                    if WHATSAPP_AVAILABLE and is_whatsapp_enabled():
+                        try:
+                            from src.config import ENABLE_WHATSAPP_FOLLOWUPS
+                            if ENABLE_WHATSAPP_FOLLOWUPS:
+                                session = call_sessions.get(call_sid, {})
+                                conversation = session.get('messages', [])
+                                
+                                # Generate call summary from conversation
+                                if conversation:
+                                    # Simple summary from last few messages
+                                    summary_parts = []
+                                    for msg in conversation[-4:]:  # Last 4 messages
+                                        if msg['role'] == 'assistant':
+                                            summary_parts.append(msg['content'][:100])
+                                    call_summary = " ".join(summary_parts)[:200] if summary_parts else "Thank you for speaking with us."
+                                else:
+                                    call_summary = "Thank you for speaking with us today."
+                                
+                                trigger_followup(
+                                    phone=request.form.get('To', ''),
+                                    customer_name=session.get('customer_name', 'Customer'),
+                                    call_summary=call_summary,
+                                    call_id=call_sid,
+                                    language=detected_language,
+                                    fire_and_forget=True
+                                )
+                                print(f"📱 WhatsApp: Followup triggered for call {call_sid}")
+                        except Exception as wa_error:
+                            print(f"⚠️ WhatsApp followup error (non-blocking): {wa_error}")
+                    # =====================================================
+                    
                     response.hangup()
                     return str(response)
                 
@@ -1221,10 +1384,24 @@ def show_status():
     audio_ok = 'audio_server' in running_services
     bot_ok = 'voice_bot_server' in running_services
     ngrok_url = get_ngrok_url()
+    whatsapp_ok = 'whatsapp' in running_services
     
     print(f"Audio Server: {'✅ RUNNING' if audio_ok else '❌ STOPPED'}")
     print(f"Voice Bot Server: {'✅ RUNNING' if bot_ok else '❌ STOPPED'}")
     print(f"Ngrok Tunnel: {'✅ ACTIVE' if ngrok_url else '❌ STOPPED'}")
+    
+    # WhatsApp status
+    if WHATSAPP_AVAILABLE:
+        if is_whatsapp_enabled():
+            print(f"WhatsApp Service: {'✅ RUNNING' if whatsapp_ok else '⚠️ NOT STARTED'}")
+            if whatsapp_ok:
+                wa_status = get_whatsapp_status()
+                print(f"  - Payment Links: {'✅ Enabled' if wa_status.get('payment_links_enabled') else '❌ Disabled'}")
+                print(f"  - Service Health: {'✅ OK' if wa_status.get('service_healthy') else '❌ Unavailable'}")
+        else:
+            print(f"WhatsApp Service: ⚪ DISABLED (set ENABLE_WHATSAPP=true)")
+    else:
+        print(f"WhatsApp Service: ⚪ NOT INSTALLED")
     
     if ngrok_url:
         print(f"Webhook URL: {ngrok_url}/voice")
@@ -1410,8 +1587,26 @@ def main():
         print("❌ Ngrok failed")
         return
     
+    # 4. Start WhatsApp service (if enabled)
+    if WHATSAPP_AVAILABLE and is_whatsapp_enabled():
+        try:
+            from start_whatsapp_service import start_service_background, wait_for_service
+            print("📱 Starting WhatsApp service...")
+            whatsapp_thread = start_service_background()
+            if wait_for_service(timeout=10):
+                print("✅ WhatsApp service ready on port 8001")
+                running_services['whatsapp'] = whatsapp_thread
+            else:
+                print("⚠️ WhatsApp service failed to start (continuing without it)")
+        except Exception as e:
+            print(f"⚠️ WhatsApp service error: {e} (continuing without it)")
+    elif WHATSAPP_AVAILABLE:
+        print("📱 WhatsApp integration available but disabled (set ENABLE_WHATSAPP=true to enable)")
+    
     print("✅ All services ready!")
     print(f"🌐 Webhook: {ngrok_url}/voice")
+    if WHATSAPP_AVAILABLE and is_whatsapp_enabled():
+        print(f"📱 WhatsApp: http://localhost:8001")
     time.sleep(2)
     
     # Show main menu
