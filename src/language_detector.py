@@ -111,7 +111,7 @@ def detect_language(text: str) -> str:
     hinglish_keywords = [
         # Pure Hindi transliterations
         'namaste', 'kaise', 'ho', 'hai', 'haan', 'nahi', 'kripya', 'dhanyavad',
-        'madad', 'samay', 'tarikh', 'pata', 'bhai', 'didi', 'ji',
+        'madad', 'samay', 'tarikh', 'pata', 'bhai', 'didi', '',
         'aap', 'hum', 'mera', 'meri', 'kya', 'kyu', 'kyon', 'kab', 'kahan', 'kidhar',
         'chahiye', 'chahiyeh', 'karna', 'hoga', 'krna', 'krunga', 'krungi',
         'mere', 'mujhe', 'tumhe', 'aapko', 'hamein', 'unhein',

@@ -15,6 +15,8 @@ const Dashboard = () => {
   const [stats, setStats] = useState(null);
   const [activeCalls, setActiveCalls] = useState([]);
   const [recentCalls, setRecentCalls] = useState([]);
+  const [paymentStats, setPaymentStats] = useState(null);
+  const [whatsappStats, setWhatsappStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
 
@@ -38,7 +40,7 @@ const Dashboard = () => {
         setLoading(true);
       }
       
-      const [statsRes, activeRes, recentRes] = await Promise.all([
+      const [statsRes, activeRes, recentRes, paymentRes, whatsappRes] = await Promise.all([
         axios.get(`${API_URL}/calls/stats`, {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
@@ -47,7 +49,13 @@ const Dashboard = () => {
         }),
         axios.get(`${API_URL}/calls?limit=5&sortBy=createdAt&sortOrder=desc`, {
           headers: { 'Authorization': `Bearer ${token}` }
-        })
+        }),
+        axios.get(`${API_URL}/payments/stats`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }).catch(() => ({ data: { success: false } })),
+        axios.get(`${API_URL}/whatsapp/stats`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }).catch(() => ({ data: { success: false } }))
       ]);
 
       // Reset retry count on successful fetch
@@ -62,6 +70,12 @@ const Dashboard = () => {
       }
       if (recentRes.data.success && JSON.stringify(recentRes.data.data) !== JSON.stringify(recentCalls)) {
         setRecentCalls(recentRes.data.data);
+      }
+      if (paymentRes.data.success) {
+        setPaymentStats(paymentRes.data.data);
+      }
+      if (whatsappRes.data.success) {
+        setWhatsappStats(whatsappRes.data.data);
       }
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
@@ -136,7 +150,7 @@ const Dashboard = () => {
       </div>
 
       {/* Status Cards */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-6 mb-8">
         <div className="card">
           <div className="flex items-center">
             <div className="flex-shrink-0 bg-blue-500 rounded-md p-3">
@@ -216,6 +230,48 @@ const Dashboard = () => {
             </div>
           </div>
         </div>
+
+        {/* Revenue Card */}
+        <div className="card">
+          <div className="flex items-center">
+            <div className="flex-shrink-0 bg-emerald-500 rounded-md p-3">
+              <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="ml-5 w-0 flex-1">
+              <dl>
+                <dt className="text-sm font-medium text-dark-text-muted truncate">
+                  Revenue
+                </dt>
+                <dd className="text-2xl font-semibold text-emerald-500">
+                  ₹{paymentStats?.overview?.totalRevenue?.toLocaleString() || 0}
+                </dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+
+        {/* WhatsApp Delivery Card */}
+        <div className="card">
+          <div className="flex items-center">
+            <div className="flex-shrink-0 bg-green-500 rounded-md p-3">
+              <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            </div>
+            <div className="ml-5 w-0 flex-1">
+              <dl>
+                <dt className="text-sm font-medium text-dark-text-muted truncate">
+                  WhatsApp
+                </dt>
+                <dd className="text-2xl font-semibold text-green-500">
+                  {whatsappStats?.overview?.deliveryRate || 0}%
+                </dd>
+              </dl>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Two Column Layout */}
@@ -289,6 +345,18 @@ const Dashboard = () => {
                 {stats?.successRate || 0}%
               </span>
             </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-dark-text-muted">Payment Conversion</span>
+              <span className="text-sm font-medium text-emerald-500">
+                {paymentStats?.overview?.conversionRate || 0}%
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-dark-text-muted">Pending Payments</span>
+              <span className="text-sm font-medium text-yellow-500">
+                {paymentStats?.overview?.pendingLinks || 0}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -298,12 +366,18 @@ const Dashboard = () => {
         <h2 className="text-lg font-semibold text-dark-text mb-4">
           Quick Actions
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
           <a href="/calls" className="btn-primary text-center">
             View All Calls
           </a>
-          <a href="/live" className="btn-primary text-center">
+          <a href="/live-calls" className="btn-primary text-center">
             Monitor Live Calls
+          </a>
+          <a href="/payments" className="btn-primary text-center bg-emerald-600 hover:bg-emerald-700">
+            View Payments
+          </a>
+          <a href="/whatsapp" className="btn-primary text-center bg-green-600 hover:bg-green-700">
+            WhatsApp Messages
           </a>
           <a href="/analytics" className="btn-primary text-center">
             View Analytics

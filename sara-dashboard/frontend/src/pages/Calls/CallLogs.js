@@ -185,6 +185,9 @@ const CallLogs = () => {
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Payment
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Time
                 </th>
               </tr>
@@ -192,7 +195,7 @@ const CallLogs = () => {
             <tbody className="bg-gray-800 divide-y divide-gray-700">
               {calls.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan="8" className="px-6 py-12 text-center text-gray-400">
                     No call logs found
                   </td>
                 </tr>
@@ -218,6 +221,19 @@ const CallLogs = () => {
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(call.status)}`}>
                         {call.status}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {call.metadata?.hasPaymentLink ? (
+                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-emerald-100 text-emerald-800">
+                          💳 Sent
+                        </span>
+                      ) : call.metadata?.hasWhatsAppMessages ? (
+                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                          💬 WhatsApp
+                        </span>
+                      ) : (
+                        <span className="text-gray-500 text-sm">--</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                       {formatDate(call.startTime)}

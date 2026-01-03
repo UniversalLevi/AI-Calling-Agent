@@ -48,7 +48,7 @@ from pathlib import Path
 import signal
 import requests
 import warnings
-from flask import Flask, request, send_file
+from flask import Flask, request, send_file, Response
 from twilio.twiml.voice_response import VoiceResponse
 from datetime import datetime, timezone
 
@@ -196,6 +196,38 @@ product_service = None
 prompt_builder = None
 call_sessions = {}  # Store product and conversation data per call_sid
 
+def cleanup_old_sessions():
+    """Clean up old call sessions (older than 1 hour)"""
+    try:
+        from datetime import datetime, timezone, timedelta
+        current_time = datetime.now(timezone.utc)
+        cutoff_time = current_time - timedelta(hours=1)
+        
+        sessions_to_remove = []
+        for call_sid, session in call_sessions.items():
+            # Check if session has a timestamp
+            created_at = session.get('created_at')
+            if created_at:
+                try:
+                    if isinstance(created_at, str):
+                        session_time = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    else:
+                        session_time = created_at
+                    
+                    if session_time < cutoff_time:
+                        sessions_to_remove.append(call_sid)
+                except:
+                    pass
+        
+        for call_sid in sessions_to_remove:
+            del call_sessions[call_sid]
+            print(f"🧹 Cleaned up old session: {call_sid}")
+        
+        if sessions_to_remove:
+            print(f"🧹 Cleaned up {len(sessions_to_remove)} old session(s)")
+    except Exception as e:
+        print(f"⚠️ Session cleanup error: {e}")
+
 # Dashboard integration
 DASHBOARD_API_URL = "http://localhost:5000/api"
 
@@ -252,6 +284,42 @@ def update_call_transcript(call_id, transcript_text):
         print(f"⚠️ Transcript update error: {e}")
         return None
 
+def log_payment_to_dashboard(payment_data):
+    """Log payment link to dashboard backend"""
+    try:
+        response = requests.post(
+            f"{DASHBOARD_API_URL}/payments",
+            json=payment_data,
+            timeout=5
+        )
+        if response.status_code in [200, 201]:
+            print(f"✅ Payment logged to dashboard: {payment_data.get('razorpayLinkId', 'Unknown')}")
+            return response.json()
+        else:
+            print(f"⚠️ Payment logging failed: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"⚠️ Payment logging error: {e}")
+        return None
+
+def log_whatsapp_message_to_dashboard(message_data):
+    """Log WhatsApp message to dashboard backend"""
+    try:
+        response = requests.post(
+            f"{DASHBOARD_API_URL}/whatsapp/messages",
+            json=message_data,
+            timeout=5
+        )
+        if response.status_code in [200, 201]:
+            print(f"✅ WhatsApp message logged to dashboard: {message_data.get('messageId', 'Unknown')}")
+            return response.json()
+        else:
+            print(f"⚠️ WhatsApp logging failed: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"⚠️ WhatsApp logging error: {e}")
+        return None
+
 # =============================================================================
 # AUDIO SERVER (Built-in)
 # =============================================================================
@@ -265,15 +333,78 @@ def create_audio_server():
     
     @audio_app.route('/audio/<filename>')
     def serve_audio(filename):
-        """Serve audio files"""
+        """Serve audio files with proper headers for streaming"""
         audio_dir = Path("audio_files")
         file_path = audio_dir / filename
         
-        if file_path.exists():
-            print(f"🔊 Serving audio: {filename}")
-            return send_file(file_path, mimetype='audio/mpeg')
-        else:
+        if not file_path.exists():
+            print(f"❌ Audio file not found: {filename}")
             return "Audio file not found", 404
+        
+        try:
+            # Get file size for Content-Length header
+            file_size = file_path.stat().st_size
+            
+            # Determine MIME type based on extension
+            if filename.endswith('.mp3'):
+                mimetype = 'audio/mpeg'
+            elif filename.endswith('.wav'):
+                mimetype = 'audio/wav'
+            elif filename.endswith('.ogg'):
+                mimetype = 'audio/ogg'
+            else:
+                mimetype = 'audio/mpeg'  # Default
+            
+            # Check for Range header (for partial content support)
+            range_header = request.headers.get('Range', None)
+            
+            if range_header:
+                # Parse range header
+                import re
+                match = re.search(r'bytes=(\d+)-(\d*)', range_header)
+                if match:
+                    start = int(match.group(1))
+                    end = int(match.group(2)) if match.group(2) else file_size - 1
+                    length = end - start + 1
+                    
+                    # Read partial content
+                    with open(file_path, 'rb') as f:
+                        f.seek(start)
+                        data = f.read(length)
+                    
+                    response = Response(
+                        data,
+                        206,  # Partial Content
+                        mimetype=mimetype,
+                        headers={
+                            'Content-Range': f'bytes {start}-{end}/{file_size}',
+                            'Accept-Ranges': 'bytes',
+                            'Content-Length': str(length),
+                            'Cache-Control': 'public, max-age=3600'
+                        },
+                        direct_passthrough=True
+                    )
+                    return response
+            
+            # Full file response
+            print(f"🔊 Serving audio: {filename} ({file_size} bytes)")
+            response = send_file(
+                file_path,
+                mimetype=mimetype,
+                as_attachment=False
+            )
+            
+            # Add headers for better streaming
+            response.headers['Accept-Ranges'] = 'bytes'
+            response.headers['Content-Length'] = str(file_size)
+            response.headers['Cache-Control'] = 'public, max-age=3600'
+            response.headers['X-Content-Type-Options'] = 'nosniff'
+            
+            return response
+            
+        except Exception as e:
+            print(f"❌ Error serving audio {filename}: {e}")
+            return f"Error serving audio: {str(e)}", 500
     
     return audio_app
 
@@ -391,6 +522,7 @@ def create_voice_bot_server():
             # Store product in call session along with caller's phone number
             if call_sid:
                 global call_sessions
+                from datetime import datetime, timezone
                 call_sessions[call_sid] = {
                     'product': active_product,
                     'messages': [],
@@ -398,7 +530,8 @@ def create_voice_bot_server():
                     'caller_phone': to_number,  # User's phone number (we called them)
                     'customer_name': None,  # Will be extracted from conversation
                     'payment_link_sent': False,
-                    'awaiting_number_confirmation': False  # For payment link flow
+                    'awaiting_number_confirmation': False,  # For payment link flow
+                    'created_at': datetime.now(timezone.utc).isoformat()  # Track creation time for cleanup
                 }
                 print(f"📱 Caller phone stored: {to_number[:6]}****{to_number[-4:] if len(to_number) > 10 else to_number}")
             
@@ -840,12 +973,41 @@ def create_voice_bot_server():
                                                     call_sessions[call_sid]['whatsapp_needs_optin'] = False
                                                 msg_id = result.get('message_id', 'N/A')
                                                 payment_link = result.get('payment_link', 'N/A')
+                                                razorpay_id = result.get('razorpay_link_id', '')
                                                 print(f"✅ WhatsApp: Payment link sent successfully!")
                                                 print(f"📱 Message ID: {msg_id}")
                                                 print(f"🔗 Payment Link: {payment_link}")
                                                 print(f"📞 Phone: {caller_phone}")
+                                                
+                                                # Log payment to dashboard
+                                                log_payment_to_dashboard({
+                                                    'razorpayLinkId': razorpay_id or f"link_{call_sid}_{int(time.time())}",
+                                                    'callId': call_sid,
+                                                    'phone': caller_phone,
+                                                    'customerName': display_name or 'Customer',
+                                                    'amount': product_price * 100 if product_price < 1000 else product_price,  # Convert to paise if needed
+                                                    'amountDisplay': product_price / 100 if product_price > 10000 else product_price,
+                                                    'productName': product_name or 'Service',
+                                                    'shortUrl': payment_link,
+                                                    'whatsappMessageId': msg_id,
+                                                    'status': 'sent'
+                                                })
+                                                
+                                                # Log WhatsApp message to dashboard
+                                                log_whatsapp_message_to_dashboard({
+                                                    'messageId': msg_id,
+                                                    'callId': call_sid,
+                                                    'phone': caller_phone,
+                                                    'customerName': display_name or 'Customer',
+                                                    'direction': 'outbound',
+                                                    'type': 'payment_link',
+                                                    'content': f"Payment link for {product_name}: {payment_link}",
+                                                    'paymentLinkUrl': payment_link,
+                                                    'status': 'sent'
+                                                })
+                                                
                                                 # Override bot response to confirm link was sent
-                                                name_part = f"{display_name} ji, " if display_name and display_name.lower() != 'customer' else ""
+                                                name_part = f"{display_name} , " if display_name and display_name.lower() != 'customer' else ""
                                                 bot_response = f"Done! {name_part}Payment link bhej diya hai aapke WhatsApp pe. Check kar lijiye! Kuch aur help chahiye?"
                                                 # Mark that we just sent the link THIS turn - don't override with satisfied check
                                                 call_sessions[call_sid]['payment_link_just_sent'] = True
@@ -996,11 +1158,42 @@ def create_voice_bot_server():
                                                 call_sessions[call_sid]['resend_attempts'] = resend_attempts + 1
                                                 msg_id = resend_result.get('message_id', 'N/A')
                                                 payment_link = resend_result.get('payment_link', 'N/A')
+                                                razorpay_id = resend_result.get('razorpay_link_id', '')
                                                 print(f"✅ WhatsApp: Link resent successfully!")
                                                 print(f"📱 Message ID: {msg_id}")
                                                 print(f"🔗 Payment Link: {payment_link}")
                                                 print(f"📞 Phone: {caller_phone}")
-                                                bot_response = "Theek hai ji! Maine phir se link bhej diya hai WhatsApp pe. Ab check kar lijiye, mil jayega!"
+                                                
+                                                # Log resent payment to dashboard
+                                                log_payment_to_dashboard({
+                                                    'razorpayLinkId': razorpay_id or f"link_{call_sid}_{int(time.time())}",
+                                                    'callId': call_sid,
+                                                    'phone': caller_phone,
+                                                    'customerName': customer_name or 'Customer',
+                                                    'amount': product_price * 100 if product_price < 1000 else product_price,
+                                                    'amountDisplay': product_price / 100 if product_price > 10000 else product_price,
+                                                    'productName': product_name,
+                                                    'shortUrl': payment_link,
+                                                    'whatsappMessageId': msg_id,
+                                                    'status': 'sent',
+                                                    'metadata': {'isResend': True, 'resendAttempt': resend_attempts + 1}
+                                                })
+                                                
+                                                # Log resent WhatsApp message
+                                                log_whatsapp_message_to_dashboard({
+                                                    'messageId': msg_id,
+                                                    'callId': call_sid,
+                                                    'phone': caller_phone,
+                                                    'customerName': customer_name or 'Customer',
+                                                    'direction': 'outbound',
+                                                    'type': 'payment_link',
+                                                    'content': f"Payment link resend ({resend_attempts + 1}) for {product_name}: {payment_link}",
+                                                    'paymentLinkUrl': payment_link,
+                                                    'status': 'sent',
+                                                    'metadata': {'isResend': True}
+                                                })
+                                                
+                                                bot_response = "Theek hai ! Maine phir se link bhej diya hai WhatsApp pe. Ab check kar lijiye, mil jayega!"
                                             elif resend_result and resend_result.get('needs_optin'):
                                                 # Still needs opt-in - this is the real issue!
                                                 call_sessions[call_sid]['resend_attempts'] = resend_attempts + 1
@@ -1010,30 +1203,30 @@ def create_voice_bot_server():
                                                 print(f"⚠️ WhatsApp: Opt-in required! Error: {error_msg}")
                                                 print(f"📱 Business number: {business_number}")
                                                 if business_number:
-                                                    bot_response = f"Sorry ji, WhatsApp pe 'Hi' bhejna padega pehle {business_number} par. Phir main link bhej dungi!"
+                                                    bot_response = f"Sorry , WhatsApp pe 'Hi' bhejna padega pehle {business_number} par. Phir main link bhej dungi!"
                                                 else:
-                                                    bot_response = "Sorry ji, WhatsApp pe pehle 'Hi' message bhejna padega. Phir main link bhej sakti hun."
+                                                    bot_response = "Sorry , WhatsApp pe pehle 'Hi' message bhejna padega. Phir main link bhej sakti hun."
                                             else:
                                                 call_sessions[call_sid]['resend_attempts'] = resend_attempts + 1
                                                 error = resend_result.get('error', 'Unknown') if resend_result else 'No response'
                                                 error_code = resend_result.get('error_code', 'N/A') if resend_result else 'N/A'
                                                 print(f"❌ WhatsApp resend failed: {error} (code: {error_code})")
-                                                bot_response = "Sorry ji, kuch technical issue ho raha hai. Thodi der mein phir se try karte hain?"
+                                                bot_response = "Sorry , kuch technical issue ho raha hai. Thodi der mein phir se try karte hain?"
                                     except Exception as resend_err:
                                         call_sessions[call_sid]['resend_attempts'] = resend_attempts + 1
                                         print(f"❌ WhatsApp resend error: {resend_err}")
-                                        bot_response = "Sorry ji, abhi technical issue ho raha hai. Thodi der baad phir try karein?"
+                                        bot_response = "Sorry , abhi technical issue ho raha hai. Thodi der baad phir try karein?"
                                 elif resend_attempts >= 2:
                                     # Already tried resending 2 times - don't keep trying
                                     print(f"⚠️ WhatsApp: Max resend attempts reached ({resend_attempts}), not resending again")
                                     if session.get('whatsapp_needs_optin'):
                                         business_number = session.get('whatsapp_business_number', '')
                                         if business_number:
-                                            bot_response = f"Sorry ji, link nahi ja raha. Kya aapne {business_number} par WhatsApp pe 'Hi' bheja hai? Pehle woh karna padega."
+                                            bot_response = f"Sorry , link nahi ja raha. Kya aapne {business_number} par WhatsApp pe 'Hi' bheja hai? Pehle woh karna padega."
                                         else:
-                                            bot_response = "Sorry ji, link delivery mein issue ho raha hai. Kya aap WhatsApp pe pehle 'Hi' message bhej sakte hain?"
+                                            bot_response = "Sorry , link delivery mein issue ho raha hai. Kya aap WhatsApp pe pehle 'Hi' message bhej sakte hain?"
                                     else:
-                                        bot_response = "Sorry ji, link delivery mein technical issue ho raha hai. Aap WhatsApp support se contact kar sakte hain."
+                                        bot_response = "Sorry , link delivery mein technical issue ho raha hai. Aap WhatsApp support se contact kar sakte hain."
                                         
                             except Exception as wa_error:
                                 print(f"⚠️ WhatsApp error (non-blocking): {wa_error}")
@@ -1121,13 +1314,13 @@ def create_voice_bot_server():
                         # We already asked if they're done - any confirmation means end call
                         if user_confirms_done or is_standalone_nahi:
                             should_hangup = True
-                            bot_response = "Theek hai ji! Apna khayal rakhiyega, koi issue ho toh batana. Take care, bye!"
+                            bot_response = "Theek hai ! Apna khayal rakhiyega, koi issue ho toh batana. Take care, bye!"
                             print(f"🔚 User confirmed done, ending call")
                     elif user_says_done or user_confirms_done:
                         # If user says "bas itna hi tha" (with or without thank you), end immediately
                         if user_confirms_done:
                             should_hangup = True
-                            bot_response = "Theek hai ji! Apna khayal rakhiyega, koi issue ho toh batana. Take care, bye!"
+                            bot_response = "Theek hai ! Apna khayal rakhiyega, koi issue ho toh batana. Take care, bye!"
                             print(f"🔚 User clearly done (bas itna hi tha), ending call")
                         else:
                             # First time saying done - ask for confirmation
@@ -1206,7 +1399,7 @@ def create_voice_bot_server():
                 if not bot_response or bot_response.strip() == "":
                     print(f"⚠️ Empty response detected, using fallback")
                     if detected_language == 'hi':
-                        bot_response = "Haan ji, samajh gayi. Aur kuch help chahiye?"
+                        bot_response = "Haan , samajh gayi. Aur kuch help chahiye?"
                     else:
                         bot_response = "Got it! Anything else I can help with?"
                     print(f"✅ Fallback response set: '{bot_response}'")
@@ -1233,13 +1426,31 @@ def create_voice_bot_server():
                     )
                     
                     if audio_file and audio_file.endswith('.mp3'):
-                        # Play audio INSIDE gather with barge-in enabled
-                        ngrok_url = get_ngrok_url()
-                        if ngrok_url:
-                            gather.play(f"{ngrok_url}/audio/{audio_file}")
-                            print(f"🎵 Playing TTS audio: {audio_file} (interruption enabled)")
+                        # Verify audio file exists and is readable before playing
+                        audio_path = Path("audio_files") / audio_file
+                        if audio_path.exists():
+                            # Check file size to ensure it's not empty/corrupted
+                            file_size = audio_path.stat().st_size
+                            if file_size > 1000:  # At least 1KB (reasonable minimum for audio)
+                                # Play audio INSIDE gather with barge-in enabled
+                                ngrok_url = get_ngrok_url()
+                                if ngrok_url:
+                                    gather.play(f"{ngrok_url}/audio/{audio_file}")
+                                    print(f"🎵 Playing TTS audio: {audio_file} ({file_size} bytes, interruption enabled)")
+                                else:
+                                    print("❌ Ngrok URL not available, using Twilio fallback")
+                                    if detected_language in ['hi', 'mixed']:
+                                        gather.say(bot_response, voice='Polly.Aditi', language='hi-IN')
+                                    else:
+                                        gather.say(bot_response, voice='Polly.Joanna', language='en-IN')
+                            else:
+                                print(f"⚠️ Audio file too small ({file_size} bytes), using Twilio fallback")
+                                if detected_language in ['hi', 'mixed']:
+                                    gather.say(bot_response, voice='Polly.Aditi', language='hi-IN')
+                                else:
+                                    gather.say(bot_response, voice='Polly.Joanna', language='en-IN')
                         else:
-                            print("❌ Ngrok URL not available, using Twilio fallback")
+                            print(f"⚠️ Audio file not found: {audio_file}, using Twilio fallback")
                             if detected_language in ['hi', 'mixed']:
                                 gather.say(bot_response, voice='Polly.Aditi', language='hi-IN')
                             else:
@@ -1424,6 +1635,16 @@ def create_voice_bot_server():
                 'endTime': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
             }
             update_call_in_dashboard(call_sid, update_data)
+            
+            # Clean up session when call ends
+            if call_sid in call_sessions:
+                del call_sessions[call_sid]
+                print(f"🧹 Cleaned up session for completed call: {call_sid}")
+        
+        # Periodic cleanup of old sessions (every 10th status update)
+        import random
+        if random.random() < 0.1:  # 10% chance to run cleanup
+            cleanup_old_sessions()
         
         return "OK"
     

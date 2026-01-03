@@ -94,12 +94,12 @@ Add natural pauses DIRECTLY in the response text. OpenAI TTS respects punctuatio
 
 ### Current Text:
 ```python
-"Haan ji! Ye AI Trading Bot hai. Ye automatic trading karta hai. Price sirf 2000 hai."
+"Haan ! Ye AI Trading Bot hai. Ye automatic trading karta hai. Price sirf 2000 hai."
 ```
 
 ### Improved with Natural Pauses:
 ```python
-"Haan ji! Ye AI Trading Bot hai... ye automatic trading karta hai. Price? Sirf 2000 hai."
+"Haan ! Ye AI Trading Bot hai... ye automatic trading karta hai. Price? Sirf 2000 hai."
 ```
 
 **Techniques**:

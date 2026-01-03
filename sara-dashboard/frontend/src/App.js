@@ -28,6 +28,10 @@ import Analytics from './pages/Analytics/Analytics';
 import ProductManager from './pages/Sales/ProductManager';
 import ScriptEditor from './pages/Sales/ScriptEditor';
 
+// Payment and WhatsApp Pages
+import Payments from './pages/Payments/Payments';
+import WhatsAppMessages from './pages/WhatsApp/WhatsAppMessages';
+
 // Styles
 import './index.css';
 
@@ -60,6 +64,8 @@ function App() {
                 <Route path="calls" element={<CallLogs />} />
                 <Route path="live-calls" element={<LiveCalls />} />
                 <Route path="analytics" element={<Analytics />} />
+                <Route path="payments" element={<Payments />} />
+                <Route path="whatsapp" element={<WhatsAppMessages />} />
                 <Route path="sales/products" element={<ProductManager />} />
                 <Route path="sales/scripts" element={<ScriptEditor />} />
                 <Route path="settings" element={<Settings />} />

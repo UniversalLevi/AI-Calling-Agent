@@ -14,6 +14,8 @@ const Sidebar = ({ isOpen, onClose }) => {
     { name: 'Dashboard', href: '/dashboard', icon: '📊' },
     { name: 'Live Calls', href: '/live-calls', icon: '📞' },
     { name: 'Call Logs', href: '/calls', icon: '📚' },
+    { name: 'Payments', href: '/payments', icon: '💳' },
+    { name: 'WhatsApp', href: '/whatsapp', icon: '💬' },
     { name: 'Analytics', href: '/analytics', icon: '📈' },
     { name: 'Sales', href: '/sales/products', icon: '🎯', submenu: [
       { name: 'Products', href: '/sales/products', icon: '📦' },

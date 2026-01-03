@@ -21,6 +21,8 @@ const userRoutes = require('./routes/userRoutes');
 const systemRoutes = require('./routes/systemRoutes');
 const salesRoutes = require('./routes/salesRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
+const whatsappRoutes = require('./routes/whatsappRoutes');
 
 // Import middleware
 const authMiddleware = require('./middleware/authMiddleware');
@@ -121,6 +123,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/whatsapp', whatsappRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

@@ -348,7 +348,7 @@ class HumanizedResponseHandler:
         
         if language in ['hi', 'mixed']:
             fillers = {
-                'angry': ['Hmm, samjha main', 'Theek hai ji'],
+                'angry': ['Hmm, samjha main', 'Theek hai '],
                 'confused': ['Achha', 'Dekho'],
                 'happy': ['Bilkul', 'Zarur'],
                 'neutral': ['Haan', 'Theek hai']

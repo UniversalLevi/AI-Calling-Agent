@@ -30,7 +30,7 @@ CONVERSATION STYLE:
 - Keep responses SHORT (1-2 sentences usually)
 - Be warm but professional
 - Don't over-explain or lecture
-- React naturally: "Achha", "Haan ji", "Theek hai"
+- React naturally: "Achha", "Haan ", "Theek hai"
 - Ask one thing at a time
 
 EMOTIONAL READS:

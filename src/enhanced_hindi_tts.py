@@ -188,12 +188,19 @@ class EnhancedHindiTTS:
                 response_format="mp3"
             )
             
-            # Save audio file
+            # Save audio file with proper flushing
             with open(audio_file, 'wb') as f:
                 f.write(response.content)
+                f.flush()
+                os.fsync(f.fileno())  # Force write to disk
             
-            print(f"🎵 Sara's Voice (OpenAI): {audio_file.name}")
-            return audio_file.name
+            # Verify file was written correctly
+            if audio_file.exists() and audio_file.stat().st_size > 0:
+                print(f"🎵 Sara's Voice (OpenAI): {audio_file.name} ({audio_file.stat().st_size} bytes)")
+                return audio_file.name
+            else:
+                print(f"❌ Audio file not properly written: {audio_file}")
+                return None
             
         except Exception as e:
             print(f"❌ OpenAI TTS error: {e}")

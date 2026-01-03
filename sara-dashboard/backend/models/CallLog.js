@@ -68,8 +68,26 @@ const callLogSchema = new mongoose.Schema({
     userAgent: String,
     ipAddress: String,
     location: String,
-    deviceType: String
+    deviceType: String,
+    product_name: String,
+    product_id: String,
+    product_category: String,
+    hasPaymentLink: Boolean,
+    hasWhatsAppMessages: Boolean
   },
+  
+  // Payment Links Reference
+  paymentLinks: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'PaymentLink'
+  }],
+  
+  // WhatsApp Messages Reference
+  whatsappMessages: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'WhatsAppMessage'
+  }],
+  
   createdAt: {
     type: Date,
     default: Date.now,
@@ -95,6 +113,20 @@ callLogSchema.index({ 'salesData.productId': 1, createdAt: -1 });
 callLogSchema.index({ 'salesData.conversationStage': 1, createdAt: -1 });
 callLogSchema.index({ 'salesData.conversionOutcome': 1, createdAt: -1 });
 callLogSchema.index({ 'salesData.callQuality.score': -1 });
+
+// Payment and WhatsApp indexes
+callLogSchema.index({ 'metadata.hasPaymentLink': 1, createdAt: -1 });
+callLogSchema.index({ 'metadata.hasWhatsAppMessages': 1, createdAt: -1 });
+
+// Virtual for has payment
+callLogSchema.virtual('hasPayment').get(function() {
+  return this.paymentLinks && this.paymentLinks.length > 0;
+});
+
+// Virtual for has WhatsApp messages
+callLogSchema.virtual('hasWhatsApp').get(function() {
+  return this.whatsappMessages && this.whatsappMessages.length > 0;
+});
 
 // Virtual for formatted duration
 callLogSchema.virtual('formattedDuration').get(function() {
