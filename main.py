@@ -380,7 +380,11 @@ def create_voice_bot_server():
             if PRODUCT_AWARE and hasattr(bot_app, 'product_service') and bot_app.product_service:
                 try:
                     active_product = bot_app.product_service.get_active_product()
-                    print(f"🛍️ Active product: {active_product.get('name') if active_product else 'None'}")
+                    if active_product:
+                        print(f"🛍️ Active product: {active_product.get('name')}")
+                        print(f"💰 Product price: {active_product.get('price')} (type: {type(active_product.get('price')).__name__})")
+                    else:
+                        print(f"🛍️ No active product found")
                 except Exception as e:
                     print(f"⚠️ Error fetching active product: {e}")
             
@@ -398,8 +402,9 @@ def create_voice_bot_server():
                 }
                 print(f"📱 Caller phone stored: {to_number[:6]}****{to_number[-4:] if len(to_number) > 10 else to_number}")
             
-            # Note: SMS to India is blocked by carriers (Error 30044)
-            # Instead, we add a verbal WhatsApp opt-in prompt to the greeting
+            # SMS opt-in disabled - Indian carriers block international SMS (Error 30044)
+            # WhatsApp works directly if user has messaged the business number before
+            # The WhatsApp integration sends messages directly without SMS opt-in
             
             # Log call start to dashboard with product metadata
             call_data = {
@@ -430,14 +435,8 @@ def create_voice_bot_server():
                 base_greeting = "Namaste! Main Sara hun. Kaise madad kar sakti hun?"
                 print("📢 Using generic greeting (no active product)")
             
-            # Add WhatsApp opt-in prompt if WhatsApp is available
-            # This tells users to message the WhatsApp number to receive payment links
-            if WHATSAPP_DIRECT_AVAILABLE and is_whatsapp_direct_configured():
-                whatsapp_prompt = get_whatsapp_greeting_prompt("hi")
-                greeting = f"{base_greeting} {whatsapp_prompt}"
-                print(f"📱 Added WhatsApp opt-in prompt: {WHATSAPP_BUSINESS_NUMBER}")
-            else:
-                greeting = base_greeting
+            # Use simple greeting (SMS handles WhatsApp opt-in)
+            greeting = base_greeting
             
             try:
                 from src.enhanced_hindi_tts import speak_mixed_enhanced
@@ -732,8 +731,8 @@ def create_voice_bot_server():
                             update_call_transcript(call_sid, transcript_text)
                         
                         # =====================================================
-                        # WHATSAPP PAYMENT LINK - Direct Integration (Optimized)
-                        # Uses caller's phone number automatically, sends via direct API
+                        # WHATSAPP PAYMENT LINK - Smart Flow with Retry
+                        # Gathers customer details first, then sends link
                         # =====================================================
                         whatsapp_ready = (WHATSAPP_DIRECT_AVAILABLE and is_whatsapp_direct_configured()) or (WHATSAPP_AVAILABLE and is_payment_links_enabled())
                         
@@ -742,51 +741,115 @@ def create_voice_bot_server():
                                 session = call_sessions.get(call_sid, {})
                                 caller_phone = session.get('caller_phone') or request.form.get('To', '')
                                 
-                                # Check if we should send payment link (explicit request or confirmation)
+                                # Check if we should send payment link
                                 intent_detected = detect_payment_link_intent(speech_result, detected_language)
                                 confirmation_detected = detect_payment_confirmation_intent(speech_result, detected_language)
                                 
-                                should_send = (intent_detected or confirmation_detected) and not session.get('payment_link_sent')
+                                # Count payment link attempts (allow retries)
+                                link_attempts = session.get('payment_link_attempts', 0)
+                                link_sent_successfully = session.get('payment_link_success', False)
                                 
-                                if should_send and caller_phone:
+                                # Get customer name from session
+                                customer_name = session.get('customer_name', '').strip()
+                                has_customer_name = customer_name and customer_name.lower() not in ['customer', '']
+                                
+                                # Only send if: we have customer name OR they explicitly ask for link
+                                # "खरीदना है" alone should NOT trigger - bot should ask for name first
+                                should_try_send = False
+                                if not link_sent_successfully and caller_phone:
+                                    if intent_detected:  # Explicit "send me link" request
+                                        should_try_send = True
+                                    elif confirmation_detected and has_customer_name:
+                                        # Only auto-send on confirmation if we already have their name
+                                        should_try_send = True
+                                
+                                if should_try_send:
                                     intent_type = "explicit request" if intent_detected else "payment confirmation"
-                                    print(f"📱 WhatsApp: Detected {intent_type}")
+                                    print(f"📱 WhatsApp: Detected {intent_type} (attempt {link_attempts + 1})")
+                                    
+                                    # Get product info from session (fetched from dashboard)
+                                    active_product = session.get('product', {}) or {}
+                                    product_name = active_product.get('name', 'Service') or 'Service'
+                                    
+                                    # Get price from product (dashboard stores in rupees)
+                                    raw_price = active_product.get('price')
+                                    
+                                    # Convert price to paise (integer)
+                                    # Dashboard stores prices in RUPEES (e.g., 2000 for ₹2000)
+                                    try:
+                                        if raw_price is None:
+                                            product_price = 200000  # Default ₹2000
+                                        elif isinstance(raw_price, str):
+                                            # Remove currency symbols and convert
+                                            clean_price = raw_price.replace('₹', '').replace(',', '').strip()
+                                            try:
+                                                rupees = float(clean_price)
+                                                product_price = int(rupees * 100)  # Convert rupees to paise
+                                            except ValueError:
+                                                product_price = 200000  # Default if string like "Contact us"
+                                        elif isinstance(raw_price, (int, float)):
+                                            # Dashboard stores in rupees, so always multiply by 100
+                                            product_price = int(raw_price * 100)
+                                        else:
+                                            product_price = 200000  # Default ₹2000
+                                    except (ValueError, TypeError):
+                                        product_price = 200000  # Default ₹2000
+                                    
+                                    # Minimum ₹1 (100 paise)
+                                    if product_price < 100:
+                                        product_price = 100
+                                    
+                                    # Use extracted customer_name, fallback to 'Customer'
+                                    display_name = customer_name if has_customer_name else 'Customer'
+                                    
                                     print(f"📱 WhatsApp: Sending to {caller_phone[:6]}****{caller_phone[-4:]}")
+                                    print(f"📱 WhatsApp: Raw price from product: {raw_price} (type: {type(raw_price).__name__ if raw_price else 'None'})")
+                                    print(f"📱 WhatsApp: Converted price: {product_price} paise (₹{product_price/100:.0f})")
+                                    print(f"📱 WhatsApp: Product={product_name}, Price=₹{product_price/100:.0f}, Customer={display_name}")
                                     
-                                    # Get product info
-                                    active_product = session.get('product', {})
-                                    product_name = (active_product.get('name') if active_product else None) or 'Service'
-                                    product_price = (active_product.get('price') if active_product else None) or 50000  # Default ₹500
-                                    customer_name = session.get('customer_name') or 'Customer'
+                                    # Send payment link (with sync call to check result)
+                                    import threading
+                                    def send_link_async():
+                                        try:
+                                            if WHATSAPP_DIRECT_AVAILABLE and is_whatsapp_direct_configured():
+                                                result = send_payment_link_sync(
+                                                    phone=caller_phone,
+                                                    amount=product_price,
+                                                    customer_name=display_name,
+                                                    product_name=product_name,
+                                                    call_id=call_sid,
+                                                    language=detected_language if detected_language != 'mixed' else 'hi',
+                                                    fire_and_forget=False  # Wait for result
+                                                )
+                                                if result and result.get('success'):
+                                                    if call_sid in call_sessions:
+                                                        call_sessions[call_sid]['payment_link_success'] = True
+                                                        call_sessions[call_sid]['payment_link_url'] = result.get('payment_link')
+                                                    print(f"✅ WhatsApp: Payment link sent successfully!")
+                                                else:
+                                                    error = result.get('error', 'Unknown') if result else 'No response'
+                                                    print(f"❌ WhatsApp: Payment link failed - {error}")
+                                            elif WHATSAPP_AVAILABLE:
+                                                trigger_payment_link(
+                                                    phone=caller_phone,
+                                                    amount=product_price,
+                                                    customer_name=display_name,
+                                                    product_name=product_name,
+                                                    call_id=call_sid,
+                                                    language=detected_language,
+                                                    fire_and_forget=True
+                                                )
+                                        except Exception as e:
+                                            print(f"❌ WhatsApp send error: {e}")
                                     
-                                    # Use Direct WhatsApp integration (preferred) or fall back to microservice
-                                    if WHATSAPP_DIRECT_AVAILABLE and is_whatsapp_direct_configured():
-                                        send_payment_link_sync(
-                                            phone=caller_phone,
-                                            amount=product_price,
-                                            customer_name=customer_name,
-                                            product_name=product_name,
-                                            call_id=call_sid,
-                                            language=detected_language if detected_language != 'mixed' else 'hi',
-                                            fire_and_forget=True
-                                        )
-                                        print(f"📱 WhatsApp Direct: Payment link triggered for {product_name}")
-                                    elif WHATSAPP_AVAILABLE:
-                                        # Fallback to microservice
-                                        trigger_payment_link(
-                                            phone=caller_phone,
-                                            amount=product_price,
-                                            customer_name=customer_name,
-                                            product_name=product_name,
-                                            call_id=call_sid,
-                                            language=detected_language,
-                                            fire_and_forget=True
-                                        )
-                                        print(f"📱 WhatsApp Service: Payment link triggered for {product_name}")
+                                    # Run in background thread
+                                    link_thread = threading.Thread(target=send_link_async)
+                                    link_thread.daemon = True
+                                    link_thread.start()
                                     
-                                    # Mark as sent in session
+                                    # Track attempt
                                     if call_sid in call_sessions:
-                                        call_sessions[call_sid]['payment_link_sent'] = True
+                                        call_sessions[call_sid]['payment_link_attempts'] = link_attempts + 1
                                         call_sessions[call_sid]['payment_link_sent_at'] = datetime.now(timezone.utc).isoformat()
                                         call_sessions[call_sid]['payment_link_phone'] = caller_phone
                                         

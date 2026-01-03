@@ -124,8 +124,11 @@ async def create_payment_link(
         logger.error("Invalid phone number for payment link")
         return None
     
+    # Ensure amount is always an integer (Razorpay requires whole numbers in paise)
+    amount_int = int(amount) if amount else 100  # Default to ₹1 if no amount
+    
     payload = {
-        "amount": amount,
+        "amount": amount_int,
         "currency": "INR",
         "description": f"Payment for {product_name}",
         "customer": {
@@ -310,39 +313,23 @@ async def send_payment_link_whatsapp(
     # Format amount for display
     amount_rupees = amount / 100
     
-    # Compose WhatsApp message
-    if language == "hi":
-        message = f"""🎉 *SARA से Payment Link*
-
-Namaste {customer_name} ji! 👋
-
-Aapka payment link taiyaar hai:
-
-📦 *Product:* {product_name}
-💰 *Amount:* ₹{amount_rupees:.0f}
-🔗 *Pay Here:* {payment_link}
-
-UPI, Card, ya Net Banking se pay kar sakte hain.
-
-Payment ke baad confirmation milega. 🙏
-
-— SARA, Eazy Dropshipping"""
+    # Clean customer name (remove "Customer" default, capitalize properly)
+    display_name = customer_name.strip().title() if customer_name and customer_name.lower() != "customer" else ""
+    
+    # Compose WhatsApp message - Clean, minimal English template
+    if display_name:
+        greeting = f"Hi {display_name},"
     else:
-        message = f"""🎉 *Payment Link from SARA*
+        greeting = "Hi,"
+    
+    message = f"""{greeting}
 
-Hi {customer_name}! 👋
+Your payment link for *{product_name}* is ready.
 
-Your payment link is ready:
+*Amount:* ₹{amount_rupees:,.0f}
+*Pay here:* {payment_link}
 
-📦 *Product:* {product_name}
-💰 *Amount:* ₹{amount_rupees:.0f}
-🔗 *Pay Here:* {payment_link}
-
-You can pay via UPI, Card, or Net Banking.
-
-You'll receive confirmation after payment. 🙏
-
-— SARA, Eazy Dropshipping"""
+— SARA"""
 
     # Send WhatsApp message
     result = await send_whatsapp_message(phone, message)

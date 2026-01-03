@@ -117,12 +117,42 @@ Thank you! 🙏"""
             to=to_phone
         )
         
-        logger.info(f"📱 WhatsApp opt-in SMS sent to ****{to_phone[-4:]}, SID: {message.sid}")
+        logger.info(f"📱 SMS queued to ****{to_phone[-4:]}, SID: {message.sid}")
         
-        # Mark as sent
-        _optin_sms_sent.add(to_phone)
+        # Check delivery status after a short delay
+        import time
+        time.sleep(2)  # Wait for delivery status update
         
-        return True
+        # Fetch updated message status
+        try:
+            updated_msg = client.messages(message.sid).fetch()
+            status = updated_msg.status
+            
+            if status in ['delivered', 'sent']:
+                logger.info(f"✅ SMS delivered to ****{to_phone[-4:]}")
+                _optin_sms_sent.add(to_phone)
+                return True
+            elif status == 'failed':
+                error_code = updated_msg.error_code
+                logger.warning(f"❌ SMS failed: Error {error_code}")
+                # Error 30044 = carrier blocked (common for India)
+                if error_code == 30044:
+                    logger.warning("⚠️ SMS blocked by carrier (Error 30044)")
+                return False
+            elif status == 'undelivered':
+                logger.warning(f"❌ SMS undelivered: {updated_msg.error_message}")
+                return False
+            else:
+                # Status is 'queued' or 'sending' - assume it might work
+                logger.info(f"📱 SMS status: {status} - assuming delivery")
+                _optin_sms_sent.add(to_phone)
+                return True
+                
+        except Exception as fetch_error:
+            logger.warning(f"Could not verify SMS delivery: {fetch_error}")
+            # Assume sent if we got this far
+            _optin_sms_sent.add(to_phone)
+            return True
         
     except TwilioRestException as e:
         logger.error(f"Twilio SMS error: {e.code} - {e.msg}")
