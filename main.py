@@ -185,6 +185,19 @@ except ImportError as e:
     ENABLE_WHATSAPP_OPTIN_SMS = False
     print(f"⚠️ SMS service not available: {e}")
 
+# Production mode detection
+PRODUCTION_MODE = os.getenv('FLASK_ENV', 'development') == 'production'
+BASE_URL = os.getenv('BASE_URL', '')  # Set this in production (e.g., https://yourdomain.com)
+
+if PRODUCTION_MODE:
+    print("🏭 Running in PRODUCTION mode")
+    if BASE_URL:
+        print(f"🌐 Base URL: {BASE_URL}")
+    else:
+        print("⚠️ BASE_URL not set! Set BASE_URL environment variable for production")
+else:
+    print("🔧 Running in DEVELOPMENT mode (ngrok required)")
+
 # Global variables
 voice_bot_app = None
 audio_server_app = None
@@ -1774,8 +1787,18 @@ def start_voice_bot_server():
         return False
 
 def start_ngrok():
-    """Start ngrok tunnel"""
+    """Start ngrok tunnel (skipped in production mode)"""
     global ngrok_process
+    
+    # In production, use BASE_URL directly
+    if PRODUCTION_MODE:
+        if BASE_URL:
+            running_services['tunnel'] = 'production'
+            print(f"✅ Production mode: Using BASE_URL: {BASE_URL}")
+            return BASE_URL.rstrip('/')
+        else:
+            print("❌ Production mode requires BASE_URL environment variable")
+            return None
     
     if 'ngrok' in running_services:
         ngrok_url = get_ngrok_url()
@@ -1807,7 +1830,12 @@ def start_ngrok():
         return None
 
 def get_ngrok_url():
-    """Get the current ngrok URL"""
+    """Get the current public URL (ngrok in dev, BASE_URL in production)"""
+    # In production, use BASE_URL
+    if PRODUCTION_MODE and BASE_URL:
+        return BASE_URL.rstrip('/')
+    
+    # In development, try ngrok
     try:
         response = requests.get("http://127.0.0.1:4040/api/tunnels", timeout=2)
         if response.status_code == 200:
@@ -2126,8 +2154,8 @@ def cleanup_on_exit():
     def signal_handler(signum, frame):
         print("\n🔄 Shutting down gracefully...")
         
-        # Stop ngrok
-        if ngrok_process:
+        # Stop ngrok (only in development mode)
+        if not PRODUCTION_MODE and ngrok_process:
             try:
                 ngrok_process.terminate()
                 print("✅ Ngrok stopped")

@@ -1,619 +1,232 @@
-# SARA Calling Agent - Project Index & Architecture
+# SARA AI Calling Agent - Project Index
 
-## 📋 Table of Contents
-1. [Project Overview](#project-overview)
-2. [System Architecture](#system-architecture)
-3. [Component Breakdown](#component-breakdown)
-4. [Data Flow](#data-flow)
-5. [Technology Stack](#technology-stack)
-6. [Key Features](#key-features)
-7. [File Structure](#file-structure)
-8. [Integration Points](#integration-points)
+## Overview
 
----
+SARA (Smart AI Response Agent) is an AI-powered calling bot that handles Hindi/English phone conversations, sends payment links via WhatsApp, and integrates with a full-stack dashboard for monitoring and management.
 
-## Project Overview
-
-**SARA** is an AI-powered voice calling agent that can make and receive phone calls with native support for **Hindi, English, and Hinglish** (mixed language) conversations. The system includes:
-
-- **Python Backend**: Voice bot with AI conversation engine
-- **MERN Dashboard**: Full-stack web dashboard for management
-- **Twilio Integration**: Real phone call handling
-- **Product-Aware Conversations**: Dynamic conversation flows based on active products
-- **Real-time Monitoring**: Live call tracking and analytics
-
----
-
-## System Architecture
-
-### High-Level Architecture
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      USER PHONE                              │
-└───────────────────────┬─────────────────────────────────────┘
-                        │
-                        │ Phone Call (Voice)
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│                     TWILIO API                               │
-│  - Voice Calls                                              │
-│  - Media Streams                                            │
-│  - Webhooks                                                 │
-└───────────────────────┬─────────────────────────────────────┘
-                        │
-                        │ HTTPS Webhook
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  NGROK TUNNEL                                │
-│  (Local Development: Exposes localhost:8000 to internet)    │
-└───────────────────────┬─────────────────────────────────────┘
-                        │
-                        │ HTTP Requests
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│              FLASK VOICE BOT SERVER (Port 8000)              │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │  Main Endpoints:                                       │ │
-│  │  - /voice              (Incoming call handler)        │ │
-│  │  - /process_speech     (Traditional mode)             │ │
-│  │  - /process_speech_realtime (Enhanced mode)           │ │
-│  │  - /audio/<filename>   (Serve audio files)            │ │
-│  │  - /status             (Call status callback)         │ │
-│  └────────────────────────────────────────────────────────┘ │
-└───────────────────────┬─────────────────────────────────────┘
-                        │
-        ┌───────────────┼───────────────┐
-        │               │               │
-        ▼               ▼               ▼
-┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-│   STT       │ │     AI      │ │     TTS     │
-│ (Faster-    │ │  (OpenAI    │ │  (OpenAI    │
-│  Whisper)   │ │  GPT-4o-    │ │  tts-1-hd)  │
-│             │ │   mini)     │ │             │
-└─────────────┘ └─────────────┘ └─────────────┘
-        │               │               │
-        └───────────────┼───────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│              PRODUCT SERVICE & PROMPT BUILDER                │
-│  - Fetches active product from dashboard                    │
-│  - Builds dynamic prompts with product context              │
-│  - Manages conversation history                             │
-└───────────────────────┬─────────────────────────────────────┘
-                        │
-                        │ HTTP API Calls
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│          DASHBOARD BACKEND (Node.js/Express, Port 5000)     │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │  API Endpoints:                                        │ │
-│  │  - /api/calls          (Call logs & management)       │ │
-│  │  - /api/sales          (Products & scripts)           │ │
-│  │  - /api/aida           (AIDA products)                │ │
-│  │  - /api/analytics      (Analytics data)               │ │
-│  │  - /api/users          (User management)              │ │
-│  │  - /api/system         (System config)                │ │
-│  └────────────────────────────────────────────────────────┘ │
-│                                                              │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │  Socket.IO Server                                      │ │
-│  │  - Real-time call updates                              │ │
-│  │  - Live transcript streaming                           │ │
-│  └────────────────────────────────────────────────────────┘ │
-└───────────────────────┬─────────────────────────────────────┘
-                        │
-                        │ MongoDB
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      MONGODB DATABASE                        │
-│  - CallLogs                                                  │
-│  - Products / AidaProducts                                   │
-│  - Users                                                     │
-│  - SalesScripts                                              │
-│  - SystemConfig                                              │
-│  - Analytics                                                 │
-└─────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────┐
-│          DASHBOARD FRONTEND (React, Port 3000)              │
-│  - Live Call Monitoring                                     │
-│  - Call History & Analytics                                 │
-│  - Product Management                                       │
-│  - User Management                                          │
-│  - Settings & Configuration                                 │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           SARA AI CALLING SYSTEM                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────┐    ┌──────────────┐    ┌─────────────────────────────────┐ │
+│  │   Twilio    │◄──►│  main.py     │◄──►│  Dashboard (React + Node.js)   │ │
+│  │  (Voice)    │    │  Flask App   │    │                                 │ │
+│  └─────────────┘    └──────────────┘    │  ┌─────────┐  ┌─────────────┐  │ │
+│                            │             │  │Frontend │  │  Backend    │  │ │
+│  ┌─────────────┐          │             │  │ :3000   │  │  :5000      │  │ │
+│  │  OpenAI     │◄─────────┤             │  └─────────┘  └─────────────┘  │ │
+│  │  (GPT/TTS)  │          │             └─────────────────────────────────┘ │
+│  └─────────────┘          │                                                 │
+│                           │             ┌─────────────────────────────────┐ │
+│  ┌─────────────┐          │             │         MongoDB                 │ │
+│  │  WhatsApp   │◄─────────┤             │  (Calls, Payments, Messages)    │ │
+│  │  (Meta)     │          │             └─────────────────────────────────┘ │
+│  └─────────────┘          │                                                 │
+│                           │                                                 │
+│  ┌─────────────┐          │                                                 │
+│  │  Razorpay   │◄─────────┘                                                 │
+│  │  (Payments) │                                                            │
+│  └─────────────┘                                                            │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Call Flow Diagram
-
-```
-1. User Receives Call from SARA
-   │
-   ├─> Twilio routes to /voice endpoint
-   │
-2. Flask Server (/voice endpoint)
-   │
-   ├─> Fetch active product (ProductService)
-   │
-   ├─> Generate product-specific greeting
-   │
-   ├─> Initialize call session
-   │
-   ├─> Log call start to dashboard
-   │
-   └─> Play greeting + Start speech gathering
-   │
-3. User Speaks
-   │
-   ├─> Twilio sends speech to /process_speech_realtime
-   │
-4. Speech Processing
-   │
-   ├─> Detect language (LanguageDetector)
-   │
-   ├─> Update transcript in dashboard
-   │
-   ├─> Get conversation history from session
-   │
-   ├─> Build dynamic prompt (DynamicPromptBuilder)
-   │     ├─> Include product context
-   │     ├─> Include conversation history
-   │     └─> Add scope control rules
-   │
-   ├─> Generate AI response (MixedAIBrain)
-   │     └─> OpenAI GPT-4o-mini
-   │
-   ├─> Generate speech audio (EnhancedHindiTTS)
-   │     └─> OpenAI tts-1-hd (or fallback to gTTS)
-   │
-   ├─> Update conversation history
-   │
-   ├─> Update transcript in dashboard
-   │
-   └─> Play audio to user (with interruption support)
-   │
-5. Loop back to step 3 until call ends
-   │
-6. Call End Detection
-   │
-   ├─> Goodbye keywords detected
-   │
-   └─> Update call status in dashboard
-```
-
----
-
-## Component Breakdown
-
-### 1. Python Backend (Voice Bot)
-
-#### Entry Points
-- **`main.py`**: Main launcher for calling bot
-  - Auto-checks dependencies
-  - Starts Flask servers (audio server + voice bot server)
-  - Starts ngrok tunnel
-  - Provides menu system for making calls
-  
-- **`start_sara.py`**: Dashboard launcher
-  - Starts Node.js dashboard (frontend + backend)
-  - Monitors processes
-
-#### Core Modules (`src/`)
-
-**Speech Processing:**
-- **`mixed_stt.py`**: Speech-to-Text engine using Faster-Whisper
-  - Supports Hindi and English transcription
-  - Language auto-detection
-  - Configurable model sizes (tiny, small, base, medium, large)
-
-- **`language_detector.py`**: Language detection utility
-  - Detects Hindi, English, and Hinglish
-  - Uses Devanagari script detection
-  - Hinglish keyword matching
-  - Phone number country code bias (India +91 → Hindi bias)
-
-**AI & Conversation:**
-- **`mixed_ai_brain.py`**: AI conversation engine
-  - `MixedAIBrain`: Main AI brain class
-  - `MixedOpenAIProvider`: OpenAI GPT-4o-mini implementation
-  - `MixedGeminiProvider`: Google Gemini alternative (fallback)
-  - Maintains conversation history
-  - Language-aware prompts
-
-- **`dynamic_prompt_builder.py`**: Dynamic prompt generation
-  - Builds prompts with product context
-  - Includes conversation history
-  - Scope control rules (handling off-topic questions)
-  - AIDA framework support (Attention, Interest, Desire, Action)
-
-- **`product_service.py`**: Product data service
-  - Fetches active product from dashboard API
-  - Caches product data (60s TTL)
-  - Supports both Product and AidaProduct models
-  - Standardizes product format
-
-- **`prompt_manager.py`**: Prompt template management
-  - Loads prompts from `prompts/` directory
-  - Core persona, sales, booking, support prompts
-
-**Text-to-Speech:**
-- **`enhanced_hindi_tts.py`**: High-quality TTS system
-  - Multiple provider support (OpenAI, gTTS)
-  - OpenAI tts-1-hd for high quality
-  - Automatic cleanup of old audio files
-  - Language-aware voice selection
-
-**Response Processing:**
-- **`responses/`**: Response handler system
-  - `humanized_response.py`: Humanized response pipeline
-  - `response_factory.py`: Factory pattern for response handlers
-
-**Humanization:**
-- **`humanizer.py`**: Adds natural conversation elements
-  - Filler words
-  - Micro-sentences
-  - Semantic pacing
-
-- **`emotion_detector.py`**: Emotion detection
-  - Keyword-based detection
-  - GPT-based detection (optional)
-  - Hybrid mode
-
-**Dashboard Integration:**
-- **`simple_dashboard_integration.py`**: Dashboard API client
-- **`dashboard_api.py`**: Dashboard Flask blueprint
-
-**Voice Features:**
-- **`ultra_simple_interruption.py`**: Voice interruption handling
-- **`realtime_voice_bot.py`**: Real-time voice bot implementation
-- **`realtime_vad.py`**: Voice activity detection
-
-**Utilities:**
-- **`config.py`**: Configuration management
-  - Environment variable loading
-  - Settings validation
-  - Feature flags
-
-- **`conversation_memory.py`**: Conversation history management
-- **`hinglish_translator.py`**: Hinglish transliteration
-- **`script_integration.py`**: Sales script integration
-
-### 2. Dashboard Backend (Node.js/Express)
-
-**Server (`server.js`)**:
-- Express server on port 5000
-- Socket.IO for real-time updates
-- MongoDB connection
-- CORS configuration
-- Request logging
-
-**Models (`models/`)**:
-- `CallLog.js`: Call records with transcripts
-- `Product.js`: Basic product model
-- `AidaProduct.js`: AIDA framework product model
-- `SalesScript.js`: Sales conversation scripts
-- `User.js`: User authentication
-- `SystemConfig.js`: System settings
-- `SalesAnalytics.js`: Analytics data
-- `ObjectionHandler.js`: Objection handling rules
-
-**Controllers (`controllers/`)**:
-- `callController.js`: Call log management
-- `salesController.js`: Product and script management
-- `aidaController.js`: AIDA product management
-- `analyticsController.js`: Analytics generation
-- `userController.js`: User management
-- `systemController.js`: System configuration
-
-**Routes (`routes/`)**:
-- RESTful API endpoints
-- Authentication middleware
-- Request validation
-
-**Socket Handler (`socket/socketHandler.js`)**:
-- Real-time call updates
-- Live transcript streaming
-- Connection management
-
-### 3. Dashboard Frontend (React)
-
-**Pages (`pages/`)**:
-- `Dashboard/`: Main dashboard overview
-- `Calls/`: 
-  - `LiveCalls.js`: Real-time call monitoring
-  - `CallLogs.js`: Call history
-- `Sales/`:
-  - `ProductManager.js`: Product management
-  - `AidaProductManager.js`: AIDA product editor
-  - `ScriptEditor.js`: Sales script editor
-- `Analytics/`: Analytics and insights
-- `Users/`: User management
-- `Settings/`: System configuration
-- `Auth/Login.js`: Authentication
-
-**Components (`components/`)**:
-- `Layout/`: Navbar, Sidebar, Layout wrapper
-- `Auth/`: Protected routes
-- `Common/`: Loading spinner, etc.
-
-**Contexts (`contexts/`)**:
-- `AuthContext.js`: Authentication state
-- `SocketContext.js`: Socket.IO connection
-
----
-
-## Data Flow
-
-### Call Initiation Flow
-
-1. User runs `python main.py`
-2. System checks dependencies (auto-installs if needed)
-3. Flask servers start:
-   - Audio server (port 5001)
-   - Voice bot server (port 8000)
-4. Ngrok tunnel starts (exposes port 8000)
-5. Webhook URL configured in Twilio
-6. User selects "Call a number" from menu
-7. Twilio initiates call
-8. Call routed to `/voice` endpoint
-
-### Conversation Flow
-
-1. **Call Start**:
-   - ProductService fetches active product
-   - DynamicPromptBuilder creates initial prompt
-   - Product-specific greeting generated
-   - Call logged to dashboard
-
-2. **User Speaks**:
-   - Twilio captures speech
-   - Speech sent to `/process_speech_realtime`
-   - Language detection (LanguageDetector)
-   - Transcript updated in dashboard
-
-3. **AI Processing**:
-   - Conversation history retrieved from session
-   - DynamicPromptBuilder builds enhanced prompt:
-     - Product context
-     - Conversation history
-     - Scope control rules
-   - MixedAIBrain generates response
-   - Response logged to transcript
-
-4. **Speech Generation**:
-   - EnhancedHindiTTS generates audio
-   - Audio file saved to `audio_files/`
-   - File served via `/audio/<filename>`
-   - Twilio plays audio to user
-
-5. **Interruption Handling**:
-   - Partial speech detection via `/partial_speech`
-   - Interruption flags set
-   - Current audio stopped
-   - New user input processed
-
-6. **Call End**:
-   - Goodbye keywords detected
-   - Call status updated in dashboard
-   - Session data cleared
-   - Audio files cleaned up (after 5 minutes)
-
----
-
-## Technology Stack
-
-### Python Backend
-- **Flask**: Web framework for voice bot server
-- **OpenAI**: GPT-4o-mini (AI) + tts-1-hd (TTS)
-- **Faster-Whisper**: Speech-to-text
-- **Twilio**: Phone call infrastructure
-- **ngrok**: Webhook tunneling
-- **python-dotenv**: Environment management
-
-### Dashboard Backend
-- **Node.js**: Runtime
-- **Express**: Web framework
-- **MongoDB**: Database
-- **Mongoose**: ODM
-- **Socket.IO**: Real-time communication
-- **JWT**: Authentication
-- **bcrypt**: Password hashing
-
-### Dashboard Frontend
-- **React**: UI framework
-- **React Router**: Routing
-- **Tailwind CSS**: Styling
-- **Socket.IO Client**: Real-time updates
-- **Axios**: HTTP client
-- **Recharts**: Data visualization
-
----
-
-## Key Features
-
-### 1. Multilingual Support
-- **Hindi** (Devanagari script)
-- **English**
-- **Hinglish** (mixed Romanized Hindi + English)
-- Automatic language detection
-- Language-aware AI responses
-
-### 2. Product-Aware Conversations
-- Dynamic prompts based on active product
-- Product-specific greetings
-- AIDA framework support
-- Objection handling
-- Scope control (handling off-topic)
-
-### 3. Voice Features
-- High-quality TTS (OpenAI tts-1-hd)
-- Voice interruptions (barge-in)
-- Real-time speech processing
-- Natural conversation flow
-
-### 4. Dashboard Features
-- Live call monitoring
-- Call history & analytics
-- Product management
-- Script editor
-- User management
-- Real-time transcript updates
-
-### 5. Reliability Features
-- Auto-dependency installation
-- Graceful error handling
-- Audio file cleanup
-- Conversation session management
-- Fallback TTS providers
-
----
-
-## File Structure
+## Directory Structure
 
 ```
 SARA_CallingAgent/
-├── main.py                          # Main calling bot launcher
-├── start_sara.py                    # Dashboard launcher
-├── dependency_checker.py            # Auto dependency installer
+├── main.py                          # Main entry point - Flask voice bot server
+├── start_sara.py                    # Alternative startup script
 ├── requirements.txt                 # Python dependencies
-├── .env                            # Environment variables (create from env.example)
-├── env.example                     # Environment template
+├── env.example                      # Environment variables template
 │
-├── src/                            # Core Python modules
-│   ├── config.py                   # Configuration management
-│   ├── mixed_ai_brain.py           # AI conversation engine
-│   ├── mixed_stt.py                # Speech-to-text
-│   ├── enhanced_hindi_tts.py       # Text-to-speech
-│   ├── language_detector.py        # Language detection
-│   ├── product_service.py          # Product data service
-│   ├── dynamic_prompt_builder.py   # Dynamic prompt builder
-│   ├── prompt_manager.py           # Prompt templates
-│   ├── conversation_memory.py      # Conversation history
-│   ├── humanizer.py                # Response humanization
-│   ├── emotion_detector.py         # Emotion detection
-│   ├── dashboard_api.py            # Dashboard integration
-│   ├── simple_dashboard_integration.py
-│   ├── script_integration.py       # Sales scripts
-│   ├── realtime_voice_bot.py       # Real-time voice bot
-│   ├── ultra_simple_interruption.py
-│   ├── responses/                  # Response handlers
-│   └── tools/                      # Utility tools
-│
-├── sara-dashboard/                 # MERN Dashboard
-│   ├── backend/                    # Node.js/Express backend
-│   │   ├── server.js               # Main server
-│   │   ├── models/                 # MongoDB models
-│   │   ├── controllers/            # API controllers
-│   │   ├── routes/                 # API routes
-│   │   ├── middleware/             # Auth & validation
-│   │   ├── socket/                 # Socket.IO handlers
-│   │   └── scripts/                # Database seeds
+├── src/                             # Python source modules
+│   ├── config.py                    # Configuration management
+│   ├── mixed_ai_brain.py            # OpenAI GPT integration
+│   ├── enhanced_hindi_tts.py        # Text-to-Speech (OpenAI TTS)
+│   ├── mixed_stt.py                 # Speech-to-Text engine
+│   ├── language_detector.py         # Hindi/English detection
+│   ├── dynamic_prompt_builder.py    # Context-aware prompt generation
+│   ├── product_service.py           # Product data management
+│   ├── conversation_memory.py       # Conversation history
+│   ├── emotion_detector.py          # Sentiment analysis
+│   ├── humanizer.py                 # Response humanization
+│   ├── realtime_voice_bot.py        # Real-time voice processing
+│   ├── realtime_vad.py              # Voice Activity Detection
+│   ├── ultra_simple_interruption.py # Call interruption handling
+│   ├── whatsapp_direct.py           # WhatsApp API + Razorpay integration
+│   ├── whatsapp_integration.py      # WhatsApp intent detection
 │   │
-│   └── frontend/                   # React frontend
-│       ├── src/
-│       │   ├── pages/              # Page components
-│       │   ├── components/         # Reusable components
-│       │   ├── contexts/           # React contexts
-│       │   └── App.js              # Main app component
-│       └── package.json
+│   ├── services/
+│   │   ├── sms_service.py           # Twilio SMS (disabled for India)
+│   │   └── whatsapp/
+│   │       ├── razorpay_client.py   # Razorpay payment links
+│   │       ├── whatsapp_client.py   # Meta WhatsApp API
+│   │       ├── whatsapp_service.py  # WhatsApp business logic
+│   │       └── whatsapp_templates.py # Message templates
+│   │
+│   └── responses/
+│       ├── humanized_response.py    # Natural response generation
+│       └── response_factory.py      # Response builder
 │
-├── prompts/                        # AI prompt templates
-│   ├── core_persona.txt
-│   ├── sales_prompt.txt
-│   ├── booking_prompt.txt
-│   └── support_prompt.txt
+├── prompts/                         # AI personality prompts
+│   ├── core_persona.txt             # Sara's personality definition
+│   ├── sales_prompt.txt             # Sales conversation prompts
+│   ├── booking_prompt.txt           # Booking flow prompts
+│   └── support_prompt.txt           # Support conversation prompts
 │
-├── audio_files/                    # Generated audio (auto-cleaned)
-└── docs/                           # Documentation
+├── audio_files/                     # Generated TTS audio (temporary)
+│
+└── sara-dashboard/                  # Full-stack dashboard
+    ├── backend/                     # Node.js/Express API
+    │   ├── server.js                # Express server entry
+    │   ├── config/db.js             # MongoDB connection
+    │   ├── models/
+    │   │   ├── CallLog.js           # Call records
+    │   │   ├── PaymentLink.js       # Payment tracking
+    │   │   ├── WhatsAppMessage.js   # Message logs
+    │   │   ├── AidaProduct.js       # AIDA products
+    │   │   ├── User.js              # Dashboard users
+    │   │   └── SystemConfig.js      # System settings
+    │   ├── controllers/
+    │   │   ├── callController.js    # Call API handlers
+    │   │   ├── paymentController.js # Payment API handlers
+    │   │   ├── whatsappController.js# WhatsApp API handlers
+    │   │   └── ...
+    │   ├── routes/
+    │   │   ├── callRoutes.js        # /api/calls
+    │   │   ├── paymentRoutes.js     # /api/payments
+    │   │   ├── whatsappRoutes.js    # /api/whatsapp
+    │   │   └── ...
+    │   ├── middleware/
+    │   │   ├── authMiddleware.js    # JWT authentication
+    │   │   └── errorHandler.js      # Error handling
+    │   └── socket/
+    │       └── socketHandler.js     # Real-time WebSocket
+    │
+    └── frontend/                    # React dashboard
+        ├── src/
+        │   ├── App.js               # Main React app
+        │   ├── pages/
+        │   │   ├── Dashboard/       # Main dashboard
+        │   │   ├── Calls/           # Call logs & live calls
+        │   │   ├── Payments/        # Payment tracking
+        │   │   ├── WhatsApp/        # WhatsApp messages
+        │   │   ├── Analytics/       # Call analytics
+        │   │   ├── Sales/           # Product management
+        │   │   └── Settings/        # System settings
+        │   ├── components/
+        │   │   └── Layout/          # Sidebar, Navbar
+        │   └── contexts/
+        │       ├── AuthContext.js   # Auth state
+        │       └── SocketContext.js # WebSocket state
+        └── tailwind.config.js       # Tailwind CSS config
 ```
 
----
+## API Endpoints
 
-## Integration Points
+### Voice Bot (main.py - Flask)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/voice` | POST | Twilio webhook for incoming calls |
+| `/process_speech` | POST | Process speech input |
+| `/process_speech_realtime` | POST | Real-time speech processing |
+| `/status` | POST | Call status webhook |
+| `/audio/<filename>` | GET | Serve TTS audio files |
 
-### 1. Twilio Integration
-- **Webhook URLs**: `/voice`, `/process_speech_realtime`, `/status`
-- **Media Streams**: `/media/<call_sid>` (for real-time processing)
-- **Audio Serving**: `/audio/<filename>`
-
-### 2. Dashboard API Integration
-- **Product Service**: `GET /api/aida/active` or `GET /api/sales/products/active`
-- **Call Logging**: `POST /api/calls`
-- **Call Updates**: `PATCH /api/calls/:id`
-- **Transcript Updates**: `PATCH /api/calls/:id/transcript`
-
-### 3. OpenAI Integration
-- **GPT-4o-mini**: Conversation generation
-- **tts-1-hd**: High-quality text-to-speech
-- **Voice**: `nova` (default), `shimmer`, `alloy`
-
-### 4. MongoDB Schema
-- **CallLogs**: Call records with transcripts, status, metadata
-- **AidaProducts**: Product data with AIDA framework
-- **Users**: Authentication and authorization
-- **SystemConfig**: System-wide settings
-
----
+### Dashboard Backend (Node.js)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/calls` | GET/POST | List/Create calls |
+| `/api/calls/:id` | GET/PATCH/DELETE | Single call operations |
+| `/api/calls/stats` | GET | Call statistics |
+| `/api/payments` | GET/POST | List/Create payments |
+| `/api/payments/stats` | GET | Payment statistics |
+| `/api/whatsapp/messages` | GET/POST | WhatsApp messages |
+| `/api/whatsapp/stats` | GET | WhatsApp statistics |
+| `/api/users/login` | POST | User authentication |
+| `/api/sales/products` | GET/POST | Product management |
 
 ## Environment Variables
 
-### Required
-- `OPENAI_API_KEY`: OpenAI API key
-- `TWILIO_ACCOUNT_SID`: Twilio account SID
-- `TWILIO_AUTH_TOKEN`: Twilio auth token
-- `TWILIO_PHONE_NUMBER`: Twilio phone number
+### Python Bot (.env)
+```env
+# Twilio
+TWILIO_ACCOUNT_SID=AC...
+TWILIO_AUTH_TOKEN=...
+TWILIO_PHONE_NUMBER=+1...
 
-### Optional
-- `MONGODB_URI`: MongoDB connection string
-- `JWT_SECRET`: JWT secret for dashboard
-- `OPENAI_TTS_MODEL`: TTS model (default: tts-1-hd)
-- `OPENAI_TTS_VOICE`: Voice name (default: nova)
-- `WHISPER_MODEL_SIZE`: Whisper model size (default: base)
+# OpenAI
+OPENAI_API_KEY=sk-...
 
----
+# WhatsApp (Meta)
+WHATSAPP_API_TOKEN=...
+WHATSAPP_PHONE_NUMBER_ID=...
+WHATSAPP_BUSINESS_NUMBER=+91...
 
-## Getting Started
+# Razorpay
+RAZORPAY_KEY_ID=rzp_...
+RAZORPAY_KEY_SECRET=...
 
-1. **Install Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   cd sara-dashboard && npm install
-   cd frontend && npm install
-   ```
+# Dashboard
+DASHBOARD_API_URL=http://localhost:5000/api
+```
 
-2. **Configure Environment**:
-   - Copy `env.example` to `.env`
-   - Fill in required credentials
+### Dashboard Backend (.env)
+```env
+PORT=5000
+MONGODB_URI=mongodb://localhost:27017/sara_dashboard
+JWT_SECRET=your_jwt_secret
+FRONTEND_URL=http://localhost:3000
+```
 
-3. **Start Dashboard**:
-   ```bash
-   python start_sara.py
-   ```
+### Dashboard Frontend (.env)
+```env
+REACT_APP_API_URL=http://localhost:5000/api
+REACT_APP_SOCKET_URL=http://localhost:5000
+```
 
-4. **Start Calling Bot**:
-   ```bash
-   python main.py
-   ```
+## Technology Stack
 
-5. **Access Dashboard**:
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:5000
-   - Default credentials: `admin` / `admin123`
+| Component | Technology |
+|-----------|------------|
+| Voice Bot | Python 3.12, Flask |
+| AI/LLM | OpenAI GPT-4.1-mini |
+| TTS | OpenAI TTS (alloy voice) |
+| STT | Twilio Enhanced Speech Recognition |
+| Telephony | Twilio Voice API |
+| WhatsApp | Meta WhatsApp Business API |
+| Payments | Razorpay Payment Links |
+| Dashboard Backend | Node.js, Express, MongoDB |
+| Dashboard Frontend | React, Tailwind CSS |
+| Real-time | Socket.io |
+| Tunnel (Dev) | ngrok |
 
----
+## Ports
 
-## Notes
+| Service | Port |
+|---------|------|
+| Voice Bot (Flask) | 8080 |
+| Audio Server | 8081 |
+| Dashboard Backend | 5000 |
+| Dashboard Frontend | 3000 |
+| MongoDB | 27017 |
 
-- The system uses **Romanized Hinglish** (Latin script) for Hindi responses, not Devanagari
-- Audio files are automatically cleaned up after 5 minutes
-- Product data is cached for 60 seconds
-- Real-time mode requires Twilio Media Streams
-- Dashboard backend runs on port 5000, frontend on 3000
-- Voice bot server runs on port 8000, audio server on 5001
-- Ngrok exposes port 8000 to the internet for webhooks
+## Key Features
 
----
+1. **Bilingual Voice Bot** - Hindi/English real-time conversation
+2. **Interruption Handling** - Users can interrupt the bot mid-speech
+3. **Payment Links** - Razorpay integration via WhatsApp
+4. **WhatsApp Messages** - Automated payment link delivery
+5. **Real-time Dashboard** - Live call monitoring
+6. **Payment Tracking** - Revenue and conversion analytics
+7. **Call Analytics** - Duration, success rates, trends
+8. **Product Management** - AIDA-based sales scripts
 
-*Last Updated: 2025*
+## Version
+
+- **Current Version**: 2.0.0 (Dashboard Integration)
+- **Last Updated**: January 2026
