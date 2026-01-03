@@ -143,6 +143,48 @@ except ImportError as e:
     WHATSAPP_AVAILABLE = False
     print(f"⚠️ WhatsApp integration not available: {e}")
 
+# Import Direct WhatsApp integration (simplified, production-ready)
+try:
+    from src.whatsapp_direct import (
+        send_payment_link_sync,
+        send_message_sync,
+        get_whatsapp_greeting_prompt,
+        should_send_payment_link,
+        mark_payment_link_sent,
+        is_configured as is_whatsapp_direct_configured,
+        is_payment_enabled as is_direct_payment_enabled,
+        get_status as get_direct_whatsapp_status,
+        WHATSAPP_BUSINESS_NUMBER
+    )
+    WHATSAPP_DIRECT_AVAILABLE = True
+    if is_whatsapp_direct_configured():
+        print("✅ WhatsApp Direct integration READY")
+    else:
+        print("⚠️ WhatsApp Direct available but not configured")
+except ImportError as e:
+    WHATSAPP_DIRECT_AVAILABLE = False
+    WHATSAPP_BUSINESS_NUMBER = "+91 91791 77847"
+    print(f"⚠️ WhatsApp Direct not available: {e}")
+
+# Import SMS service for WhatsApp opt-in (disabled for India due to carrier blocking)
+try:
+    from src.services.sms_service import (
+        send_whatsapp_optin_sms,
+        send_payment_link_sms,
+        has_optin_sms_been_sent,
+        ENABLE_WHATSAPP_OPTIN_SMS
+    )
+    SMS_SERVICE_AVAILABLE = True
+    # SMS to India is blocked by carriers, so we disable by default
+    if ENABLE_WHATSAPP_OPTIN_SMS:
+        print("⚠️ SMS service enabled (may not work for Indian numbers)")
+    else:
+        print("📱 SMS opt-in disabled (using verbal prompt instead)")
+except ImportError as e:
+    SMS_SERVICE_AVAILABLE = False
+    ENABLE_WHATSAPP_OPTIN_SMS = False
+    print(f"⚠️ SMS service not available: {e}")
+
 # Global variables
 voice_bot_app = None
 audio_server_app = None
@@ -356,6 +398,9 @@ def create_voice_bot_server():
                 }
                 print(f"📱 Caller phone stored: {to_number[:6]}****{to_number[-4:] if len(to_number) > 10 else to_number}")
             
+            # Note: SMS to India is blocked by carriers (Error 30044)
+            # Instead, we add a verbal WhatsApp opt-in prompt to the greeting
+            
             # Log call start to dashboard with product metadata
             call_data = {
                 'callId': call_sid,
@@ -379,11 +424,20 @@ def create_voice_bot_server():
             
             # Generate product-specific greeting (natural and non-pushy)
             if active_product:
-                greeting = active_product.get('greeting') or f"Namaste! Main Sara hun. Kaise madad kar sakti hun?"
+                base_greeting = active_product.get('greeting') or f"Namaste! Main Sara hun. Aapko {active_product.get('name', 'hamare product')} ke baare mein bataun?"
                 print(f"🎯 Using product-specific greeting for: {active_product.get('name')}")
             else:
-                greeting = "Hi there! I am Sara. How can I help you today?"
+                base_greeting = "Namaste! Main Sara hun. Kaise madad kar sakti hun?"
                 print("📢 Using generic greeting (no active product)")
+            
+            # Add WhatsApp opt-in prompt if WhatsApp is available
+            # This tells users to message the WhatsApp number to receive payment links
+            if WHATSAPP_DIRECT_AVAILABLE and is_whatsapp_direct_configured():
+                whatsapp_prompt = get_whatsapp_greeting_prompt("hi")
+                greeting = f"{base_greeting} {whatsapp_prompt}"
+                print(f"📱 Added WhatsApp opt-in prompt: {WHATSAPP_BUSINESS_NUMBER}")
+            else:
+                greeting = base_greeting
             
             try:
                 from src.enhanced_hindi_tts import speak_mixed_enhanced
@@ -678,72 +732,49 @@ def create_voice_bot_server():
                             update_call_transcript(call_sid, transcript_text)
                         
                         # =====================================================
-                        # WHATSAPP INTEGRATION - Auto-send UPI payment link
-                        # Uses caller's phone number automatically (no need to ask)
+                        # WHATSAPP PAYMENT LINK - Direct Integration (Optimized)
+                        # Uses caller's phone number automatically, sends via direct API
                         # =====================================================
-                        if WHATSAPP_AVAILABLE and is_payment_links_enabled():
+                        whatsapp_ready = (WHATSAPP_DIRECT_AVAILABLE and is_whatsapp_direct_configured()) or (WHATSAPP_AVAILABLE and is_payment_links_enabled())
+                        
+                        if whatsapp_ready:
                             try:
                                 session = call_sessions.get(call_sid, {})
-                                
-                                # Get caller's phone from session (auto-extracted from Twilio)
                                 caller_phone = session.get('caller_phone') or request.form.get('To', '')
                                 
-                                # Check if user is asking for payment link
+                                # Check if we should send payment link (explicit request or confirmation)
                                 intent_detected = detect_payment_link_intent(speech_result, detected_language)
+                                confirmation_detected = detect_payment_confirmation_intent(speech_result, detected_language)
                                 
-                                if intent_detected and not session.get('payment_link_sent'):
-                                    print(f"📱 WhatsApp: User requested payment link")
-                                    print(f"📱 WhatsApp: Using caller's phone: {caller_phone[:6]}****{caller_phone[-4:]}")
+                                should_send = (intent_detected or confirmation_detected) and not session.get('payment_link_sent')
+                                
+                                if should_send and caller_phone:
+                                    intent_type = "explicit request" if intent_detected else "payment confirmation"
+                                    print(f"📱 WhatsApp: Detected {intent_type}")
+                                    print(f"📱 WhatsApp: Sending to {caller_phone[:6]}****{caller_phone[-4:]}")
                                     
-                                    # Get product info from session
+                                    # Get product info
                                     active_product = session.get('product', {})
-                                    product_name = active_product.get('name', 'Service') if active_product else 'Service'
-                                    
-                                    # Extract amount from product or use default
-                                    product_price = active_product.get('price', 50000) if active_product else 50000  # Default ₹500
-                                    
-                                    # Get customer name from session or use default
-                                    # Ensure it's always a valid string (handle None case)
+                                    product_name = (active_product.get('name') if active_product else None) or 'Service'
+                                    product_price = (active_product.get('price') if active_product else None) or 50000  # Default ₹500
                                     customer_name = session.get('customer_name') or 'Customer'
-                                    if not customer_name or not isinstance(customer_name, str):
-                                        customer_name = 'Customer'
                                     
-                                    # Fire-and-forget: Send UPI payment link via WhatsApp
-                                    # Uses the caller's phone automatically - no need to ask!
-                                    trigger_payment_link(
-                                        phone=caller_phone,  # Auto-extracted caller's number
-                                        amount=product_price,  # Amount in paise
-                                        customer_name=customer_name,
-                                        product_name=product_name,
-                                        call_id=call_sid,
-                                        language=detected_language,
-                                        fire_and_forget=True  # Non-blocking
-                                    )
-                                    print(f"📱 WhatsApp: UPI payment link sent to {caller_phone[-4:]} for {product_name}")
-                                    
-                                    # Mark in session that link was sent
-                                    if call_sid in call_sessions:
-                                        call_sessions[call_sid]['payment_link_sent'] = True
-                                        call_sessions[call_sid]['payment_link_sent_at'] = datetime.now(timezone.utc).isoformat()
-                                        call_sessions[call_sid]['payment_link_phone'] = caller_phone
-                                
-                                # Check if user confirms payment intent -> auto-send link
-                                elif detect_payment_confirmation_intent(speech_result, detected_language):
-                                    if not session.get('payment_link_sent'):
-                                        print(f"📱 WhatsApp: User confirmed payment, auto-sending UPI link")
-                                        print(f"📱 WhatsApp: Using caller's phone: {caller_phone[:6]}****{caller_phone[-4:]}")
-                                        
-                                        active_product = session.get('product', {})
-                                        product_name = active_product.get('name', 'Service') if active_product else 'Service'
-                                        product_price = active_product.get('price', 50000) if active_product else 50000
-                                        
-                                        # Ensure customer_name is always a valid string
-                                        customer_name = session.get('customer_name') or 'Customer'
-                                        if not customer_name or not isinstance(customer_name, str):
-                                            customer_name = 'Customer'
-                                        
+                                    # Use Direct WhatsApp integration (preferred) or fall back to microservice
+                                    if WHATSAPP_DIRECT_AVAILABLE and is_whatsapp_direct_configured():
+                                        send_payment_link_sync(
+                                            phone=caller_phone,
+                                            amount=product_price,
+                                            customer_name=customer_name,
+                                            product_name=product_name,
+                                            call_id=call_sid,
+                                            language=detected_language if detected_language != 'mixed' else 'hi',
+                                            fire_and_forget=True
+                                        )
+                                        print(f"📱 WhatsApp Direct: Payment link triggered for {product_name}")
+                                    elif WHATSAPP_AVAILABLE:
+                                        # Fallback to microservice
                                         trigger_payment_link(
-                                            phone=caller_phone,  # Auto-extracted caller's number
+                                            phone=caller_phone,
                                             amount=product_price,
                                             customer_name=customer_name,
                                             product_name=product_name,
@@ -751,14 +782,16 @@ def create_voice_bot_server():
                                             language=detected_language,
                                             fire_and_forget=True
                                         )
-                                        print(f"📱 WhatsApp: UPI payment link sent for {product_name}")
+                                        print(f"📱 WhatsApp Service: Payment link triggered for {product_name}")
+                                    
+                                    # Mark as sent in session
+                                    if call_sid in call_sessions:
+                                        call_sessions[call_sid]['payment_link_sent'] = True
+                                        call_sessions[call_sid]['payment_link_sent_at'] = datetime.now(timezone.utc).isoformat()
+                                        call_sessions[call_sid]['payment_link_phone'] = caller_phone
                                         
-                                        if call_sid in call_sessions:
-                                            call_sessions[call_sid]['payment_link_sent'] = True
-                                            call_sessions[call_sid]['payment_link_phone'] = caller_phone
                             except Exception as wa_error:
-                                print(f"⚠️ WhatsApp trigger error (non-blocking): {wa_error}")
-                                # Don't let WhatsApp errors affect the call flow
+                                print(f"⚠️ WhatsApp error (non-blocking): {wa_error}")
                         # =====================================================
                 else:
                     # Quick fallback with Sara's responses

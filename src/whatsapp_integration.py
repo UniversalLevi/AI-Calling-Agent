@@ -623,6 +623,8 @@ def detect_payment_confirmation_intent(text: str, language: str = "en") -> bool:
             if keyword_lower in text_lower or keyword in text:
                 logger.info(f"Payment confirmation detected: matched '{keyword}'")
                 return True
+    
+    return False
 
 
 def detect_number_confirmation(text: str) -> str:
