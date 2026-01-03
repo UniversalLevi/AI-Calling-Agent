@@ -427,12 +427,15 @@ def create_voice_bot_server():
             
             log_call_to_dashboard(call_data)
             
-            # Generate product-specific greeting (natural and non-pushy)
+            # Generate product-specific greeting (casual, human, not robotic)
+            # Always use fresh natural greeting, ignore old stored greetings
             if active_product:
-                base_greeting = active_product.get('greeting') or f"Namaste! Main Sara hun. Aapko {active_product.get('name', 'hamare product')} ke baare mein bataun?"
-                print(f"🎯 Using product-specific greeting for: {active_product.get('name')}")
+                product_name = active_product.get('name', 'product')
+                # Use natural, conversational greeting - ignore stored greeting as it may be outdated
+                base_greeting = f"Hey! Sara here. {product_name} ke baare mein call kiya – suna hai aap interested ho?"
+                print(f"🎯 Using product-specific greeting for: {product_name}")
             else:
-                base_greeting = "Namaste! Main Sara hun. Kaise madad kar sakti hun?"
+                base_greeting = "Hey! Sara here. Kaise ho? Bataiye kya help kar sakti hun aaj?"
                 print("📢 Using generic greeting (no active product)")
             
             # Use simple greeting (SMS handles WhatsApp opt-in)
@@ -673,13 +676,22 @@ def create_voice_bot_server():
                         active_product = session.get('product')
                         conversation_history = session.get('messages', [])
                         
-                        # Build dynamic prompt with product context
+                        # Build dynamic prompt with product context and call state
                         if PRODUCT_AWARE and hasattr(bot_app, 'prompt_builder') and bot_app.prompt_builder:
                             try:
+                                # Build call state for prompt context
+                                call_state = {
+                                    'payment_link_success': session.get('payment_link_success', False),
+                                    'whatsapp_needs_optin': session.get('whatsapp_needs_optin', False),
+                                    'asked_if_done': session.get('asked_if_done', False),
+                                    'customer_name': session.get('customer_name', '')
+                                }
+                                
                                 enhanced_prompt = bot_app.prompt_builder.build_prompt(
                                     product=active_product,
                                     conversation_history=conversation_history,
-                                    detected_language=detected_language
+                                    detected_language=detected_language,
+                                    call_state=call_state
                                 )
                                 print(f"🔍 Using product-aware dynamic prompt (product: {active_product.get('name') if active_product else 'generic'})")
                             except Exception as e:
@@ -749,9 +761,10 @@ def create_voice_bot_server():
                                 link_attempts = session.get('payment_link_attempts', 0)
                                 link_sent_successfully = session.get('payment_link_success', False)
                                 
-                                # Get customer name from session
-                                customer_name = session.get('customer_name', '').strip()
-                                has_customer_name = customer_name and customer_name.lower() not in ['customer', '']
+                                # Get customer name from session (handle None safely)
+                                customer_name = session.get('customer_name') or ''
+                                customer_name = customer_name.strip() if customer_name else ''
+                                has_customer_name = bool(customer_name) and customer_name.lower() not in ['customer', '']
                                 
                                 # Only send if: we have customer name OR they explicitly ask for link
                                 # "खरीदना है" alone should NOT trigger - bot should ask for name first
@@ -807,51 +820,220 @@ def create_voice_bot_server():
                                     print(f"📱 WhatsApp: Converted price: {product_price} paise (₹{product_price/100:.0f})")
                                     print(f"📱 WhatsApp: Product={product_name}, Price=₹{product_price/100:.0f}, Customer={display_name}")
                                     
-                                    # Send payment link (with sync call to check result)
-                                    import threading
-                                    def send_link_async():
-                                        try:
-                                            if WHATSAPP_DIRECT_AVAILABLE and is_whatsapp_direct_configured():
-                                                result = send_payment_link_sync(
-                                                    phone=caller_phone,
-                                                    amount=product_price,
-                                                    customer_name=display_name,
-                                                    product_name=product_name,
-                                                    call_id=call_sid,
-                                                    language=detected_language if detected_language != 'mixed' else 'hi',
-                                                    fire_and_forget=False  # Wait for result
-                                                )
-                                                if result and result.get('success'):
-                                                    if call_sid in call_sessions:
-                                                        call_sessions[call_sid]['payment_link_success'] = True
-                                                        call_sessions[call_sid]['payment_link_url'] = result.get('payment_link')
-                                                    print(f"✅ WhatsApp: Payment link sent successfully!")
-                                                else:
-                                                    error = result.get('error', 'Unknown') if result else 'No response'
-                                                    print(f"❌ WhatsApp: Payment link failed - {error}")
-                                            elif WHATSAPP_AVAILABLE:
-                                                trigger_payment_link(
-                                                    phone=caller_phone,
-                                                    amount=product_price,
-                                                    customer_name=display_name,
-                                                    product_name=product_name,
-                                                    call_id=call_sid,
-                                                    language=detected_language,
-                                                    fire_and_forget=True
-                                                )
-                                        except Exception as e:
-                                            print(f"❌ WhatsApp send error: {e}")
-                                    
-                                    # Run in background thread
-                                    link_thread = threading.Thread(target=send_link_async)
-                                    link_thread.daemon = True
-                                    link_thread.start()
+                                    # Send payment link synchronously to check result
+                                    try:
+                                        if WHATSAPP_DIRECT_AVAILABLE and is_whatsapp_direct_configured():
+                                            print(f"📱 WhatsApp: Attempting to send payment link...")
+                                            result = send_payment_link_sync(
+                                                phone=caller_phone,
+                                                amount=product_price,
+                                                customer_name=display_name or 'Customer',
+                                                product_name=product_name or 'Service',
+                                                call_id=call_sid,
+                                                language=detected_language if detected_language != 'mixed' else 'hi',
+                                                fire_and_forget=False  # Wait for result
+                                            )
+                                            if result and result.get('success'):
+                                                if call_sid in call_sessions:
+                                                    call_sessions[call_sid]['payment_link_success'] = True
+                                                    call_sessions[call_sid]['payment_link_url'] = result.get('payment_link')
+                                                    call_sessions[call_sid]['whatsapp_needs_optin'] = False
+                                                msg_id = result.get('message_id', 'N/A')
+                                                payment_link = result.get('payment_link', 'N/A')
+                                                print(f"✅ WhatsApp: Payment link sent successfully!")
+                                                print(f"📱 Message ID: {msg_id}")
+                                                print(f"🔗 Payment Link: {payment_link}")
+                                                print(f"📞 Phone: {caller_phone}")
+                                                # Override bot response to confirm link was sent
+                                                name_part = f"{display_name} ji, " if display_name and display_name.lower() != 'customer' else ""
+                                                bot_response = f"Done! {name_part}Payment link bhej diya hai aapke WhatsApp pe. Check kar lijiye! Kuch aur help chahiye?"
+                                                # Mark that we just sent the link THIS turn - don't override with satisfied check
+                                                call_sessions[call_sid]['payment_link_just_sent'] = True
+                                                print(f"📱 Set payment_link_just_sent=True for call {call_sid}")
+                                            elif result and result.get('needs_optin'):
+                                                # User hasn't opted in - need to guide them
+                                                business_number = result.get('business_number', '')
+                                                if call_sid in call_sessions:
+                                                    call_sessions[call_sid]['whatsapp_needs_optin'] = True
+                                                    call_sessions[call_sid]['whatsapp_business_number'] = business_number
+                                                    call_sessions[call_sid]['pending_payment_link'] = {
+                                                        'amount': product_price,
+                                                        'product_name': product_name,
+                                                        'customer_name': display_name
+                                                    }
+                                                print(f"⚠️ WhatsApp: User needs opt-in. Business number: {business_number}")
+                                            else:
+                                                error = result.get('error', 'Unknown') if result else 'No response'
+                                                error_code = result.get('error_code', 'N/A') if result else 'N/A'
+                                                needs_optin = result.get('needs_optin', False) if result else False
+                                                print(f"❌ WhatsApp: Payment link failed - {error}")
+                                                print(f"📋 Error code: {error_code}")
+                                                print(f"📋 Needs opt-in: {needs_optin}")
+                                                if needs_optin:
+                                                    print(f"⚠️ User needs to send 'Hi' to WhatsApp business number first!")
+                                        elif WHATSAPP_AVAILABLE:
+                                            trigger_payment_link(
+                                                phone=caller_phone,
+                                                amount=product_price,
+                                                customer_name=display_name,
+                                                product_name=product_name,
+                                                call_id=call_sid,
+                                                language=detected_language,
+                                                fire_and_forget=True
+                                            )
+                                    except Exception as e:
+                                        print(f"❌ WhatsApp send error: {e}")
                                     
                                     # Track attempt
                                     if call_sid in call_sessions:
                                         call_sessions[call_sid]['payment_link_attempts'] = link_attempts + 1
                                         call_sessions[call_sid]['payment_link_sent_at'] = datetime.now(timezone.utc).isoformat()
                                         call_sessions[call_sid]['payment_link_phone'] = caller_phone
+                                
+                                # Check if user needs to opt-in and modify response
+                                if session.get('whatsapp_needs_optin') and not session.get('payment_link_success'):
+                                    business_number = session.get('whatsapp_business_number', '')
+                                    if business_number and bot_response:
+                                        # Append opt-in instruction to bot's response
+                                        optin_prompt = f" Ek kaam kariye – {business_number} par WhatsApp pe 'Hi' bhej dijiye, phir main link bhej dungi!"
+                                        bot_response = bot_response.rstrip('.!?') + "." + optin_prompt
+                                        print(f"📱 WhatsApp: Added opt-in prompt to response")
+                                
+                                # Check if user confirms they sent the message (retry logic)
+                                optin_confirmations = ['bhej diya', 'send kar diya', 'done', 'ho gaya', 'kar diya', 'sent', 'message bheja', 'hi bhej diya']
+                                if session.get('whatsapp_needs_optin') and any(kw in speech_result.lower() for kw in optin_confirmations):
+                                    print(f"📱 WhatsApp: User confirmed opt-in, retrying payment link...")
+                                    pending = session.get('pending_payment_link', {})
+                                    if pending:
+                                        try:
+                                            # Use pending values with safe defaults
+                                            retry_result = send_payment_link_sync(
+                                                phone=caller_phone,
+                                                amount=pending.get('amount', 200000),  # Default ₹2000
+                                                customer_name=pending.get('customer_name') or 'Customer',
+                                                product_name=pending.get('product_name') or 'Service',
+                                                call_id=call_sid,
+                                                language=detected_language if detected_language != 'mixed' else 'hi',
+                                                fire_and_forget=False
+                                            )
+                                            if retry_result and retry_result.get('success'):
+                                                call_sessions[call_sid]['payment_link_success'] = True
+                                                call_sessions[call_sid]['payment_link_url'] = retry_result.get('payment_link')
+                                                call_sessions[call_sid]['whatsapp_needs_optin'] = False
+                                                call_sessions[call_sid]['payment_link_just_sent'] = True
+                                                print(f"✅ WhatsApp: Retry successful! Payment link sent.")
+                                                # Modify response to confirm - warm and respectful
+                                                bot_response = "Done! Link bhej diya hai WhatsApp pe. Check kar lijiye! Kuch aur help chahiye?"
+                                            else:
+                                                print(f"❌ WhatsApp: Retry failed")
+                                        except Exception as retry_err:
+                                            print(f"❌ WhatsApp retry error: {retry_err}")
+                                
+                                # Check if user says link didn't come - offer to resend
+                                # Define speech_lower here for use in this scope
+                                speech_lower_check = speech_result.lower() if speech_result else ''
+                                
+                                link_not_received_phrases = ['link nahi aayi', 'लिंक नहीं आई', 'link nahi aaya', 'लिंक नहीं आया',
+                                                             'link nahi mila', 'लिंक नहीं मिला', 'link nahi mili', 'लिंक नहीं मिली',
+                                                             'payment link nahi', 'पेमेंट लिंक नहीं', 'link nahi aayi hai', 'लिंक नहीं आई है',
+                                                             'vaapas bhej', 'वापस भेज', 'phir se bhej', 'फिर से भेज', 'dobara bhej', 'दोबारा भेज',
+                                                             'resend', 'link nahi aaya', 'लिंक नहीं आया', 'payment link nahi aaya', 'पेमेंट लिंक नहीं आया']
+                                
+                                # Also check for explicit resend requests (even if link was sent)
+                                resend_request_phrases = ['vaapas bhej do', 'वापस भेज दो', 'phir se bhej do', 'फिर से भेज दो', 
+                                                          'dobara bhej do', 'दोबारा भेज दो', 'bhej do', 'भेज दो', 'vaapas', 'वापस',
+                                                          'phir se', 'फिर से', 'resend kar do', 'resend karo']
+                                
+                                # Check if user says link didn't come OR explicitly asks to resend
+                                # BUT only if we didn't just send it this turn (give it a moment to arrive)
+                                payment_just_sent_this_turn = session.get('payment_link_just_sent', False)
+                                resend_attempts = session.get('resend_attempts', 0)
+                                
+                                link_not_received = session.get('payment_link_success') and not payment_just_sent_this_turn and any(phrase in speech_lower_check or phrase in speech_result for phrase in link_not_received_phrases)
+                                explicit_resend = not payment_just_sent_this_turn and any(phrase in speech_lower_check or phrase in speech_result for phrase in resend_request_phrases)
+                                
+                                # Limit resend attempts to prevent spam (max 2 resends)
+                                if (link_not_received or explicit_resend) and resend_attempts < 2:
+                                    print(f"📱 WhatsApp: User says link didn't come, offering to resend... (attempt {resend_attempts + 1}/2)")
+                                    # Get product info for resend
+                                    active_product = session.get('product', {}) or {}
+                                    product_name = active_product.get('name', 'Service') or 'Service'
+                                    raw_price = active_product.get('price')
+                                    try:
+                                        if raw_price is None:
+                                            product_price = 200000
+                                        elif isinstance(raw_price, str):
+                                            clean_price = raw_price.replace('₹', '').replace(',', '').strip()
+                                            try:
+                                                rupees = float(clean_price)
+                                                product_price = int(rupees * 100)
+                                            except ValueError:
+                                                product_price = 200000
+                                        elif isinstance(raw_price, (int, float)):
+                                            product_price = int(raw_price * 100)
+                                        else:
+                                            product_price = 200000
+                                    except:
+                                        product_price = 200000
+                                    
+                                    if product_price < 100:
+                                        product_price = 100
+                                    
+                                    # Resend the link
+                                    try:
+                                        if WHATSAPP_DIRECT_AVAILABLE and is_whatsapp_direct_configured():
+                                            resend_result = send_payment_link_sync(
+                                                phone=caller_phone,
+                                                amount=product_price,
+                                                customer_name=customer_name or 'Customer',
+                                                product_name=product_name,
+                                                call_id=call_sid,
+                                                language=detected_language if detected_language != 'mixed' else 'hi',
+                                                fire_and_forget=False
+                                            )
+                                            if resend_result and resend_result.get('success'):
+                                                call_sessions[call_sid]['payment_link_just_sent'] = True
+                                                call_sessions[call_sid]['resend_attempts'] = resend_attempts + 1
+                                                msg_id = resend_result.get('message_id', 'N/A')
+                                                payment_link = resend_result.get('payment_link', 'N/A')
+                                                print(f"✅ WhatsApp: Link resent successfully!")
+                                                print(f"📱 Message ID: {msg_id}")
+                                                print(f"🔗 Payment Link: {payment_link}")
+                                                print(f"📞 Phone: {caller_phone}")
+                                                bot_response = "Theek hai ji! Maine phir se link bhej diya hai WhatsApp pe. Ab check kar lijiye, mil jayega!"
+                                            elif resend_result and resend_result.get('needs_optin'):
+                                                # Still needs opt-in - this is the real issue!
+                                                call_sessions[call_sid]['resend_attempts'] = resend_attempts + 1
+                                                call_sessions[call_sid]['whatsapp_needs_optin'] = True
+                                                business_number = resend_result.get('business_number', '')
+                                                error_msg = resend_result.get('error', '24-hour messaging window closed')
+                                                print(f"⚠️ WhatsApp: Opt-in required! Error: {error_msg}")
+                                                print(f"📱 Business number: {business_number}")
+                                                if business_number:
+                                                    bot_response = f"Sorry ji, WhatsApp pe 'Hi' bhejna padega pehle {business_number} par. Phir main link bhej dungi!"
+                                                else:
+                                                    bot_response = "Sorry ji, WhatsApp pe pehle 'Hi' message bhejna padega. Phir main link bhej sakti hun."
+                                            else:
+                                                call_sessions[call_sid]['resend_attempts'] = resend_attempts + 1
+                                                error = resend_result.get('error', 'Unknown') if resend_result else 'No response'
+                                                error_code = resend_result.get('error_code', 'N/A') if resend_result else 'N/A'
+                                                print(f"❌ WhatsApp resend failed: {error} (code: {error_code})")
+                                                bot_response = "Sorry ji, kuch technical issue ho raha hai. Thodi der mein phir se try karte hain?"
+                                    except Exception as resend_err:
+                                        call_sessions[call_sid]['resend_attempts'] = resend_attempts + 1
+                                        print(f"❌ WhatsApp resend error: {resend_err}")
+                                        bot_response = "Sorry ji, abhi technical issue ho raha hai. Thodi der baad phir try karein?"
+                                elif resend_attempts >= 2:
+                                    # Already tried resending 2 times - don't keep trying
+                                    print(f"⚠️ WhatsApp: Max resend attempts reached ({resend_attempts}), not resending again")
+                                    if session.get('whatsapp_needs_optin'):
+                                        business_number = session.get('whatsapp_business_number', '')
+                                        if business_number:
+                                            bot_response = f"Sorry ji, link nahi ja raha. Kya aapne {business_number} par WhatsApp pe 'Hi' bheja hai? Pehle woh karna padega."
+                                        else:
+                                            bot_response = "Sorry ji, link delivery mein issue ho raha hai. Kya aap WhatsApp pe pehle 'Hi' message bhej sakte hain?"
+                                    else:
+                                        bot_response = "Sorry ji, link delivery mein technical issue ho raha hai. Aap WhatsApp support se contact kar sakte hain."
                                         
                             except Exception as wa_error:
                                 print(f"⚠️ WhatsApp error (non-blocking): {wa_error}")
@@ -865,25 +1047,99 @@ def create_voice_bot_server():
                 
                 # Check for hangup/goodbye keywords BEFORE playing audio
                 hangup_keywords = {
-                    'en': ['bye', 'goodbye', 'good bye', 'bye bye', 'end call', 'hang up', 'hangup', 'disconnect', 'thank you bye', 'thanks bye'],
-                    'hi': ['बाय', 'बाय बाय', 'अलविदा', 'धन्यवाद', 'ठीक है बाय', 'रखती हूं', 'रखता हूं', 'चलता हूं', 'चलती हूं', 'फोन रख दो', 'रख दो'],
-                    'mixed': ['bye', 'बाय', 'बाय बाय', 'bye bye', 'alvida', 'chalta hu', 'chalti hu', 'phone rakh do']
+                    'en': ['bye', 'goodbye', 'good bye', 'bye bye', 'end call', 'hang up', 'hangup', 'disconnect', 'thank you bye', 'thanks bye', 'end the call', 'end it'],
+                    'hi': ['बाय', 'बाय बाय', 'अलविदा', 'धन्यवाद', 'ठीक है बाय', 'रखती हूं', 'रखता हूं', 'चलता हूं', 'चलती हूं', 'फोन रख दो', 'रख दो', 'इन कर दो', 'end kar do', 'end kar'],
+                    'mixed': ['bye', 'बाय', 'बाय बाय', 'bye bye', 'alvida', 'chalta hu', 'chalti hu', 'phone rakh do', 'end kar do', 'इन कर दो']
                 }
+                
+                # Keywords that indicate user is done/satisfied (context-aware)
+                # IMPORTANT: "nahi" alone is NOT done - only when clearly answering "do you need help?"
+                done_keywords_phrases = ['bas itna', 'बस इतना', 'itna hi', 'इतना ही', 'no thanks', 'no need', 'nahi chahiye', 'नहीं चाहिए', 'kuch nahi chahiye', 'कुछ नहीं चाहिए', 'bas itna hi', 'बस इतना ही']
+                confirm_done_keywords = ['bas yahi', 'बस यही', 'itna hi tha', 'इतना ही था', 'bas itna hi tha', 'बस इतना ही था', 'nothing else', 'kuch nahi', 'कुछ नहीं', 'that\'s all', 'bas itna tha', 'बस इतना था']
+                
+                # Phrases that indicate user is reporting a problem (NOT done)
+                problem_phrases = ['nahi aayi', 'नहीं आई', 'nahi aaya', 'नहीं आया', 'nahi mila', 'नहीं मिला', 'nahi mili', 'नहीं मिली', 
+                                  'nahi aaya hai', 'नहीं आया है', 'nahi aayi hai', 'नहीं आई है', 'link nahi', 'लिंक नहीं',
+                                  'bhej do', 'भेज दो', 'resend', 'vaapas', 'वापस', 'phir se', 'फिर से']
                 
                 # Check if user wants to end call
                 speech_lower = speech_result.lower() if speech_result else ''
                 should_hangup = False
                 
+                # Check explicit hangup keywords
                 for lang in ['en', 'hi', 'mixed']:
                     if any(keyword in speech_lower or keyword in speech_result for keyword in hangup_keywords.get(lang, [])):
                         should_hangup = True
                         print(f"🔚 Hangup keyword detected: '{speech_result}'")
                         break
                 
+                # Get session state
+                session_check = call_sessions.get(call_sid, {})
+                payment_sent = session_check.get('payment_link_success', False)
+                payment_just_sent = session_check.get('payment_link_just_sent', False)
+                asked_if_done = session_check.get('asked_if_done', False)
+                
+                # Clear the "just sent" flag for next turn
+                if call_sid in call_sessions and payment_just_sent:
+                    call_sessions[call_sid]['payment_link_just_sent'] = False
+                
+                # Check if user is reporting a problem (link didn't come, etc.) - NOT done!
+                user_has_problem = any(phrase in speech_lower or phrase in speech_result for phrase in problem_phrases)
+                
+                # Only check for conversation end if payment was sent in a PREVIOUS turn (not just now)
+                # Debug current state
+                print(f"📊 State: payment_sent={payment_sent}, just_sent={payment_just_sent}, asked_done={asked_if_done}, has_problem={user_has_problem}")
+                
+                if payment_sent and not payment_just_sent and not should_hangup and not user_has_problem:
+                    # Check if user is saying they're done (only if NOT reporting a problem)
+                    user_says_done = any(kw in speech_lower or kw in speech_result for kw in done_keywords_phrases)
+                    user_confirms_done = any(kw in speech_lower or kw in speech_result for kw in confirm_done_keywords)
+                    
+                    # Strong signals: "thank you" + "bas itna" = definitely done
+                    has_thank_you = any(phrase in speech_lower or phrase in speech_result for phrase in ['thank you', 'thanks', 'धन्यवाद', 'शुक्रिया', 'thank'])
+                    has_bas_itna = any(phrase in speech_lower or phrase in speech_result for phrase in ['bas itna', 'बस इतना', 'itna hi', 'इतना ही'])
+                    if has_thank_you and has_bas_itna:
+                        user_confirms_done = True
+                        print(f"📊 Strong done signal: thank you + bas itna")
+                    
+                    # Special case: standalone "nahi" or "नहीं" ONLY if we asked "aur help chahiye?"
+                    # AND it's not part of a problem phrase
+                    is_standalone_nahi = False
+                    if asked_if_done and ('nahi' in speech_lower or 'नहीं' in speech_result):
+                        # Check if it's a standalone "nahi" (not "nahi aayi", etc.)
+                        is_standalone_nahi = True
+                        for problem in ['aayi', 'आई', 'aaya', 'आया', 'mila', 'मिला', 'mili', 'मिली', 'link', 'लिंक']:
+                            if problem in speech_lower or problem in speech_result:
+                                is_standalone_nahi = False
+                                break
+                        if is_standalone_nahi:
+                            user_confirms_done = True
+                    
+                    print(f"📊 Checking done: says_done={user_says_done}, confirms_done={user_confirms_done}")
+                    
+                    if asked_if_done:
+                        # We already asked if they're done - any confirmation means end call
+                        if user_confirms_done or is_standalone_nahi:
+                            should_hangup = True
+                            bot_response = "Theek hai ji! Apna khayal rakhiyega, koi issue ho toh batana. Take care, bye!"
+                            print(f"🔚 User confirmed done, ending call")
+                    elif user_says_done or user_confirms_done:
+                        # If user says "bas itna hi tha" (with or without thank you), end immediately
+                        if user_confirms_done:
+                            should_hangup = True
+                            bot_response = "Theek hai ji! Apna khayal rakhiyega, koi issue ho toh batana. Take care, bye!"
+                            print(f"🔚 User clearly done (bas itna hi tha), ending call")
+                        else:
+                            # First time saying done - ask for confirmation
+                            bot_response = "Achha! Kuch aur help chahiye ya call end karein?"
+                            if call_sid in call_sessions:
+                                call_sessions[call_sid]['asked_if_done'] = True
+                            print(f"📞 User seems done, asking for confirmation")
+                
                 # Also check if bot response contains goodbye indicators
-                if bot_response:
+                if bot_response and not should_hangup:
                     bot_lower = bot_response.lower()
-                    if any(word in bot_lower for word in ['bye', 'goodbye', 'alvida', 'शुभ', 'धन्यवाद']) and any(word in speech_lower for word in ['bye', 'बाय', 'नहीं']):
+                    if any(word in bot_lower for word in ['bye', 'goodbye', 'alvida']) and any(word in speech_lower for word in ['bye', 'बाय']):
                         should_hangup = True
                         print(f"🔚 Conversation ending detected in bot response")
                 
@@ -924,6 +1180,22 @@ def create_voice_bot_server():
                             print(f"⚠️ WhatsApp followup error (non-blocking): {wa_error}")
                     # =====================================================
                     
+                    # Say goodbye if we have a custom message, otherwise use default
+                    goodbye_msg = bot_response if (bot_response and 'bye' in bot_response.lower()) else "Achha theek hai! Apna khayal rakhiyega. Bye, take care!"
+                    try:
+                        from src.enhanced_hindi_tts import speak_mixed_enhanced
+                        audio_file = speak_mixed_enhanced(goodbye_msg)
+                        if audio_file:
+                            ngrok_url = get_ngrok_url()
+                            if ngrok_url:
+                                response.play(f"{ngrok_url}/audio/{audio_file}")
+                            else:
+                                response.say(goodbye_msg, voice='Polly.Aditi')
+                        else:
+                            response.say(goodbye_msg, voice='Polly.Aditi')
+                    except:
+                        response.say(goodbye_msg, voice='Polly.Aditi')
+                    
                     response.hangup()
                     return str(response)
                 
@@ -934,9 +1206,9 @@ def create_voice_bot_server():
                 if not bot_response or bot_response.strip() == "":
                     print(f"⚠️ Empty response detected, using fallback")
                     if detected_language == 'hi':
-                        bot_response = "मैं आपकी बात समझ गई हूँ। क्या मैं आपकी और मदद कर सकती हूँ?"
+                        bot_response = "Haan ji, samajh gayi. Aur kuch help chahiye?"
                     else:
-                        bot_response = "I understand what you're saying. How else can I help you today?"
+                        bot_response = "Got it! Anything else I can help with?"
                     print(f"✅ Fallback response set: '{bot_response}'")
                 else:
                     print(f"✅ Response is valid: '{bot_response}'")
@@ -1046,7 +1318,7 @@ def create_voice_bot_server():
                 # After 2 no-responses, end the call gracefully
                 if no_response_count >= 2:
                     print("📞 Ending call after multiple no-responses")
-                    response.say("Thank you for your time. Goodbye!", voice='Polly.Joanna')
+                    response.say("Lagta hai aap busy hain. Koi baat nahi, baad mein baat karte hain. Take care!", voice='Polly.Aditi', language='hi-IN')
                     response.hangup()
                     return str(response)
             
@@ -1061,8 +1333,8 @@ def create_voice_bot_server():
                 profanity_filter='false'
             )
             
-            # Add a friendly prompt
-            gather.say("Are you still there? Kya aap sun rahe hain?", voice='Polly.Joanna')
+            # Add a friendly check-in
+            gather.say("Hello? Aap sun rahe hain? Kuch boliye please!", voice='Polly.Aditi', language='hi-IN')
             response.append(gather)
         
         return str(response)

@@ -210,7 +210,10 @@ async def send_whatsapp_message(
     
     phone = normalize_phone(to_phone)
     if not phone:
+        logger.error(f"❌ Invalid phone number: {to_phone}")
         return {"success": False, "error": "Invalid phone number"}
+    
+    logger.info(f"📱 Sending WhatsApp to: {mask_phone(phone)} (normalized from {to_phone})")
     
     url = f"https://graph.facebook.com/v18.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
     
@@ -234,20 +237,57 @@ async def send_whatsapp_message(
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(url, headers=headers, json=payload)
             
+            response_data = response.json()
+            logger.debug(f"📋 WhatsApp API response: {response.status_code} - {response_data}")
+            
             if response.status_code == 200:
-                data = response.json()
-                msg_id = data.get("messages", [{}])[0].get("id", "")
-                logger.info(f"✅ WhatsApp sent to {mask_phone(phone)}: {msg_id}")
-                return {"success": True, "message_id": msg_id}
+                # Check for messages in response
+                messages = response_data.get("messages", [])
+                if messages:
+                    msg_id = messages[0].get("id", "")
+                    logger.info(f"✅ WhatsApp sent to {mask_phone(phone)}: {msg_id}")
+                    
+                    # Check for warnings (like opt-in issues)
+                    contacts = response_data.get("contacts", [])
+                    if contacts:
+                        wa_id = contacts[0].get("wa_id", "")
+                        input_phone = contacts[0].get("input", "")
+                        logger.debug(f"📱 WhatsApp contact: wa_id={wa_id}, input={input_phone}")
+                    
+                    # Check for any errors or warnings in response
+                    if "error" in response_data:
+                        error_info = response_data.get("error", {})
+                        error_msg = error_info.get("message", "")
+                        error_code = error_info.get("code", 0)
+                        logger.warning(f"⚠️ WhatsApp warning in 200 response: {error_code} - {error_msg}")
+                        
+                        # Check for 24-hour window issue even in 200 response
+                        needs_optin = error_code == 131030 or "24" in error_msg.lower() or "opt" in error_msg.lower()
+                        if needs_optin:
+                            logger.warning(f"⚠️ WhatsApp opt-in required for {mask_phone(phone)}")
+                            return {
+                                "success": False,
+                                "error": error_msg or "24-hour messaging window closed",
+                                "error_code": error_code,
+                                "needs_optin": True,
+                                "message_id": msg_id  # Still got message ID but can't deliver
+                            }
+                    
+                    return {"success": True, "message_id": msg_id}
+                else:
+                    # 200 response but no messages - something wrong
+                    logger.error(f"❌ WhatsApp 200 response but no messages: {response_data}")
+                    return {"success": False, "error": "No message ID in response"}
             else:
-                error = response.json()
-                error_msg = error.get("error", {}).get("message", "Unknown error")
-                error_code = error.get("error", {}).get("code", 0)
+                error = response_data.get("error", {})
+                error_msg = error.get("message", "Unknown error")
+                error_code = error.get("code", 0)
                 
                 logger.error(f"❌ WhatsApp failed: {error_code} - {error_msg}")
+                logger.error(f"📋 Full error response: {response_data}")
                 
                 # Check for 24-hour window issue
-                needs_optin = error_code == 131030 or "24" in error_msg.lower()
+                needs_optin = error_code == 131030 or "24" in error_msg.lower() or "opt" in error_msg.lower() or "messaging window" in error_msg.lower()
                 
                 return {
                     "success": False,
@@ -316,20 +356,22 @@ async def send_payment_link_whatsapp(
     # Clean customer name (remove "Customer" default, capitalize properly)
     display_name = customer_name.strip().title() if customer_name and customer_name.lower() != "customer" else ""
     
-    # Compose WhatsApp message - Clean, minimal English template
+    # Compose WhatsApp message - Warm, friendly, respectful
     if display_name:
-        greeting = f"Hi {display_name},"
+        greeting = f"Hi {display_name}! 👋"
     else:
-        greeting = "Hi,"
+        greeting = "Hi! 👋"
     
     message = f"""{greeting}
 
-Your payment link for *{product_name}* is ready.
+Baat karke achha laga! Yeh raha aapka payment link for *{product_name}*:
 
-*Amount:* ₹{amount_rupees:,.0f}
-*Pay here:* {payment_link}
+💰 ₹{amount_rupees:,.0f}
+🔗 {payment_link}
 
-— SARA"""
+Link pe click karke easily pay kar sakte hain. Koi help chahiye toh bata dijiyega!
+
+— Sara 🙂"""
 
     # Send WhatsApp message
     result = await send_whatsapp_message(phone, message)

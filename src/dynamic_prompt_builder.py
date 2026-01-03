@@ -21,7 +21,8 @@ class DynamicPromptBuilder:
         self, 
         product: Optional[Dict] = None,
         conversation_history: Optional[List[Dict]] = None,
-        detected_language: str = 'mixed'
+        detected_language: str = 'mixed',
+        call_state: Optional[Dict] = None
     ) -> str:
         """
         Build complete AI prompt with product context.
@@ -30,6 +31,7 @@ class DynamicPromptBuilder:
             product: Active product data from ProductService
             conversation_history: List of previous messages
             detected_language: Detected language of conversation
+            call_state: Current call state (payment_sent, customer_name, etc.)
             
         Returns:
             Complete system prompt string
@@ -40,7 +42,7 @@ class DynamicPromptBuilder:
             return self._build_generic_prompt(detected_language)
         
         # Build product-aware prompt
-        return self._build_product_prompt(product, conversation_history, detected_language)
+        return self._build_product_prompt(product, conversation_history, detected_language, call_state)
     
     def _build_generic_prompt(self, language: str) -> str:
         """Build generic prompt when no product is active."""
@@ -55,7 +57,8 @@ class DynamicPromptBuilder:
         self, 
         product: Dict, 
         conversation_history: Optional[List[Dict]],
-        language: str
+        language: str,
+        call_state: Optional[Dict] = None
     ) -> str:
         """Build product-aware prompt with scope control."""
         
@@ -78,6 +81,9 @@ class DynamicPromptBuilder:
         # Build conversation context
         conv_context = self._build_conversation_context(conversation_history)
         
+        # Build call state context
+        state_context = self._build_call_state_context(call_state)
+        
         # Combine all parts
         full_prompt = f"""{core_persona}
 
@@ -86,6 +92,8 @@ class DynamicPromptBuilder:
 {context_prompt}
 
 {scope_rules}
+
+{state_context}
 
 {conv_context}
 
@@ -296,6 +304,45 @@ IMPORTANT TONE PRINCIPLES:
 """
         
         return rules.strip()
+    
+    def _build_call_state_context(self, call_state: Optional[Dict]) -> str:
+        """Build context about current call state (payment sent, etc.)."""
+        
+        if not call_state:
+            return ""
+        
+        lines = []
+        
+        # Check if payment link was sent
+        if call_state.get('payment_link_success'):
+            lines.append("✅ PAYMENT LINK ALREADY SENT to user's WhatsApp")
+            lines.append("   → DON'T promise to send link again")
+            lines.append("   → If user asks about link, say 'Already bhej diya hai, check kar lo'")
+            lines.append("   → Focus on helping with any questions or wrapping up")
+        
+        # Check if we're waiting for user to opt-in
+        if call_state.get('whatsapp_needs_optin'):
+            lines.append("⏳ WAITING FOR USER to send 'Hi' to our WhatsApp number")
+            lines.append("   → Remind them politely if needed")
+        
+        # Check if we already asked if they're done
+        if call_state.get('asked_if_done'):
+            lines.append("📞 ALREADY ASKED if user needs more help")
+            lines.append("   → If they say 'no/nahi/bas' - end call politely")
+            lines.append("   → Don't keep asking same question repeatedly")
+        
+        # Customer name if available
+        customer_name = call_state.get('customer_name')
+        if customer_name and customer_name.lower() != 'customer':
+            lines.append(f"👤 Customer name: {customer_name}")
+        
+        if lines:
+            header = "╔══════════════════════════════════════════════════════╗\n"
+            header += "║            CURRENT CALL STATUS                       ║\n"
+            header += "╚══════════════════════════════════════════════════════╝"
+            return header + "\n" + "\n".join(lines)
+        
+        return ""
     
     def _build_conversation_context(self, history: Optional[List[Dict]]) -> str:
         """Build conversation history context."""
