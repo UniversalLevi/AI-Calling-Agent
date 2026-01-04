@@ -3,7 +3,7 @@
  * Manages Socket.io connection and real-time updates
  */
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { SOCKET_URL } from '../config/api';
@@ -19,35 +19,75 @@ export const SocketProvider = ({ children }) => {
   const [activeCalls, setActiveCalls] = useState([]);
   const [systemHealth, setSystemHealth] = useState(null);
   const { isAuthenticated, user } = useAuth();
+  const socketRef = useRef(null);
+  const reconnectAttempts = useRef(0);
+  const maxReconnectAttempts = 5;
 
   // Initialize socket connection
   useEffect(() => {
+    // Cleanup function
+    const cleanup = () => {
+      if (socketRef.current) {
+        console.log('🧹 Cleaning up socket connection');
+        socketRef.current.removeAllListeners();
+        socketRef.current.close();
+        socketRef.current = null;
+        setSocket(null);
+        setIsConnected(false);
+      }
+    };
+
     if (isAuthenticated && user) {
+      // Don't create new socket if one already exists
+      if (socketRef.current && socketRef.current.connected) {
+        return cleanup;
+      }
+
+      console.log('🔌 Initializing socket connection');
       const newSocket = io(SOCKET_URL, {
         auth: {
           token: localStorage.getItem('token')
-        }
+        },
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        reconnectionAttempts: maxReconnectAttempts,
+        transports: ['websocket', 'polling']
       });
 
+      socketRef.current = newSocket;
       setSocket(newSocket);
 
       // Connection event handlers
       newSocket.on('connect', () => {
         console.log('🔌 Connected to server');
         setIsConnected(true);
+        reconnectAttempts.current = 0;
         
         // Join role-based room
         newSocket.emit('join-room', user.role);
       });
 
-      newSocket.on('disconnect', () => {
-        console.log('🔌 Disconnected from server');
+      newSocket.on('disconnect', (reason) => {
+        console.log('🔌 Disconnected from server:', reason);
         setIsConnected(false);
+        
+        // Don't reconnect if user logged out
+        if (reason === 'io server disconnect' || !isAuthenticated) {
+          cleanup();
+        }
       });
 
       newSocket.on('connect_error', (error) => {
+        reconnectAttempts.current += 1;
         console.error('❌ Socket connection error:', error);
         setIsConnected(false);
+        
+        if (reconnectAttempts.current >= maxReconnectAttempts) {
+          console.error('❌ Max reconnection attempts reached');
+          toast.error('Failed to connect to server. Please refresh the page.');
+          cleanup();
+        }
       });
 
       // Call event handlers
@@ -154,18 +194,14 @@ export const SocketProvider = ({ children }) => {
         toast.error('Connection error occurred');
       });
 
-      return () => {
-        newSocket.close();
-      };
+      return cleanup;
     } else {
       // Disconnect socket if user is not authenticated
-      if (socket) {
-        socket.close();
-        setSocket(null);
-        setIsConnected(false);
-      }
+      cleanup();
+      return () => {};
     }
-  }, [isAuthenticated, user, socket]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, user?._id]); // Only depend on user ID, not entire user object
 
   // Emit call termination
   const terminateCall = (callId) => {
