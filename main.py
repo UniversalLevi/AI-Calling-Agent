@@ -1725,18 +1725,20 @@ def start_audio_server():
             import logging
             log = logging.getLogger('werkzeug')
             log.setLevel(logging.ERROR)
-            audio_server_app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False)
+            audio_port = int(os.environ.get('AUDIO_PORT', 5018))
+            audio_server_app.run(host='0.0.0.0', port=audio_port, debug=False, use_reloader=False)
         
         audio_thread = threading.Thread(target=run_audio_server, daemon=True)
         audio_thread.start()
         
         # Wait for server to start
+        audio_port = int(os.environ.get('AUDIO_PORT', 5018))
         for i in range(10):
             try:
-                response = requests.get("http://localhost:5001/health", timeout=1)
+                response = requests.get(f"http://localhost:{audio_port}/health", timeout=1)
                 if response.status_code == 200:
                     running_services['audio_server'] = audio_thread
-                    print("✅ Audio server started on port 5001!")
+                    print(f"✅ Audio server started on port {audio_port}!")
                     return True
             except:
                 time.sleep(0.5)
@@ -2172,37 +2174,43 @@ def cleanup_on_exit():
 
 def main():
     """Main function - the only entry point you need!"""
-    clear_screen()
-    print("🚀 AI CALLING BOT")
-    print("🌐 Hindi + English Support")
-    print("-" * 30)
+    if not PRODUCTION_MODE:
+        clear_screen()
+        print("🚀 AI CALLING BOT")
+        print("🌐 Hindi + English Support")
+        print("-" * 30)
     
     # Setup cleanup
     cleanup_on_exit()
     
     # Check environment
-    print("🔍 Checking setup...")
+    if not PRODUCTION_MODE:
+        print("🔍 Checking setup...")
     if not check_environment():
-        print("❌ Setup incomplete!")
-        print("📝 Configure your .env file")
+        if not PRODUCTION_MODE:
+            print("❌ Setup incomplete!")
+            print("📝 Configure your .env file")
         return
     
     # Start all services automatically
-    print("🚀 Starting services...")
+    if not PRODUCTION_MODE:
+        print("🚀 Starting services...")
     
     # 1. Start audio server
     if not start_audio_server():
-        print("❌ Audio server failed")
+        if not PRODUCTION_MODE:
+            print("❌ Audio server failed")
         return
     
     # 2. Start voice bot server  
     if not start_voice_bot_server():
-        print("❌ Voice bot failed")
+        if not PRODUCTION_MODE:
+            print("❌ Voice bot failed")
         return
     
-    # 3. Start ngrok
+    # 3. Start ngrok (only in dev mode)
     ngrok_url = start_ngrok()
-    if not ngrok_url:
+    if not PRODUCTION_MODE and not ngrok_url:
         print("❌ Ngrok failed")
         return
     
@@ -2210,29 +2218,46 @@ def main():
     if WHATSAPP_AVAILABLE and is_whatsapp_enabled():
         try:
             from start_whatsapp_service import start_service_background, wait_for_service
-            print("📱 Starting WhatsApp service...")
+            if not PRODUCTION_MODE:
+                print("📱 Starting WhatsApp service...")
             whatsapp_thread = start_service_background()
             if wait_for_service(timeout=10):
-                print("✅ WhatsApp service ready on port 8001")
+                if not PRODUCTION_MODE:
+                    print("✅ WhatsApp service ready on port 8001")
                 running_services['whatsapp'] = whatsapp_thread
             else:
-                print("⚠️ WhatsApp service failed to start (continuing without it)")
+                if not PRODUCTION_MODE:
+                    print("⚠️ WhatsApp service failed to start (continuing without it)")
         except Exception as e:
-            print(f"⚠️ WhatsApp service error: {e} (continuing without it)")
-    elif WHATSAPP_AVAILABLE:
+            if not PRODUCTION_MODE:
+                print(f"⚠️ WhatsApp service error: {e} (continuing without it)")
+    elif WHATSAPP_AVAILABLE and not PRODUCTION_MODE:
         print("📱 WhatsApp integration available but disabled (set ENABLE_WHATSAPP=true to enable)")
     
-    print("✅ All services ready!")
-    print(f"🌐 Webhook: {ngrok_url}/voice")
-    if WHATSAPP_AVAILABLE and is_whatsapp_enabled():
-        print(f"📱 WhatsApp: http://localhost:8001")
-    time.sleep(2)
+    if not PRODUCTION_MODE:
+        print("✅ All services ready!")
+        print(f"🌐 Webhook: {ngrok_url}/voice")
+        if WHATSAPP_AVAILABLE and is_whatsapp_enabled():
+            print(f"📱 WhatsApp: http://localhost:8001")
     
-    # Show main menu
-    try:
-        main_menu()
-    except KeyboardInterrupt:
-        print("\n👋 Goodbye!")
+    # In production mode, just keep running without menu
+    if PRODUCTION_MODE:
+        # Minimal output in production
+        print("✅ Sara Voice Bot running on port 5015")
+        try:
+            # Keep the process alive
+            while True:
+                time.sleep(60)
+        except KeyboardInterrupt:
+            print("\n👋 Shutting down...")
+            cleanup_on_exit()
+    else:
+        # Development mode: show menu
+        time.sleep(2)
+        try:
+            main_menu()
+        except KeyboardInterrupt:
+            print("\n👋 Goodbye!")
 
 if __name__ == "__main__":
     main()

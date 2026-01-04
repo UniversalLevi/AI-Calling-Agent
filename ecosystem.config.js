@@ -7,7 +7,8 @@ module.exports = {
       cwd: __dirname,
       env: {
         FLASK_ENV: 'production',
-        PORT: 5015
+        PORT: 5015,
+        AUDIO_PORT: 5018
       },
       instances: 1,
       autorestart: true,
