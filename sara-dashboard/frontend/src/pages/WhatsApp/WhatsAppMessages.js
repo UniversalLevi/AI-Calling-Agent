@@ -7,8 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5016/api';
+import { API_URL } from '../../config/api';
 
 const WhatsAppMessages = () => {
   const { token } = useAuth();

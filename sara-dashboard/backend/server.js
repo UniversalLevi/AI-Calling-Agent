@@ -3,6 +3,9 @@
  * Main server file for the MERN stack admin dashboard
  */
 
+// Load environment variables FIRST, before any other imports
+require('dotenv').config();
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -10,7 +13,6 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
-require('dotenv').config();
 
 // Import database connection
 const connectDB = require('./config/db');

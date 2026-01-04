@@ -6,6 +6,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
+import { SOCKET_URL } from '../config/api';
 import toast from 'react-hot-toast';
 
 // Create context
@@ -22,7 +23,7 @@ export const SocketProvider = ({ children }) => {
   // Initialize socket connection
   useEffect(() => {
     if (isAuthenticated && user) {
-      const newSocket = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:5016', {
+      const newSocket = io(SOCKET_URL, {
         auth: {
           token: localStorage.getItem('token')
         }

@@ -9,9 +9,17 @@ const connectDB = async () => {
   const maxRetries = 5;
   let retries = 0;
   
+  // Use MONGODB_URI first, fallback to MONGO_URI, then default
+  const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI;
+  
+  if (!mongoUri) {
+    console.error('❌ MONGODB_URI or MONGO_URI environment variable is required!');
+    process.exit(1);
+  }
+  
   while (retries < maxRetries) {
     try {
-      const conn = await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/sara-dashboard', {
+      const conn = await mongoose.connect(mongoUri, {
         useNewUrlParser: true,
         useUnifiedTopology: true,
         serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
