@@ -6,8 +6,8 @@ WORKDIR /app
 # Copy package files
 COPY sara-dashboard/frontend/package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (using npm install to handle lock file sync issues)
+RUN npm install
 
 # Copy source code
 COPY sara-dashboard/frontend/ .
