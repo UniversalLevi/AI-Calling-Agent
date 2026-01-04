@@ -2,7 +2,7 @@
  * Live Calls Page - Real-time monitoring
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
@@ -13,9 +13,33 @@ const LiveCalls = () => {
   const [activeCalls, setActiveCalls] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchActiveCalls = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get('/calls/active', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.data.success) {
+        setActiveCalls(response.data.data);
+        console.log('✅ Active calls fetched:', response.data.data);
+      } else {
+        console.log('⚠️ No active calls found');
+        setActiveCalls([]);
+      }
+    } catch (err) {
+      console.error('Error fetching active calls:', err);
+      setActiveCalls([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
   useEffect(() => {
     fetchActiveCalls();
-  }, []);
+  }, [fetchActiveCalls]);
 
   useEffect(() => {
     if (!socket || !isConnected) return;
@@ -41,31 +65,7 @@ const LiveCalls = () => {
       socket.off('callUpdated');
       socket.off('callTerminated');
     };
-  }, [socket, isConnected]);
-
-  const fetchActiveCalls = async () => {
-    try {
-      setLoading(true);
-      const response = await axios.get('/calls/active', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.data.success) {
-        setActiveCalls(response.data.data);
-        console.log('✅ Active calls fetched:', response.data.data);
-      } else {
-        console.log('⚠️ No active calls found');
-        setActiveCalls([]);
-      }
-    } catch (err) {
-      console.error('Error fetching active calls:', err);
-      setActiveCalls([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [socket, isConnected, fetchActiveCalls]);
 
   const formatDuration = (startTime) => {
     if (!startTime) return '0:00';

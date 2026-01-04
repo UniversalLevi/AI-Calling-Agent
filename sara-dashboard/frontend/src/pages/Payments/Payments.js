@@ -3,7 +3,7 @@
  * Dashboard for viewing and managing payment links
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
@@ -23,33 +23,7 @@ const Payments = () => {
     endDate: ''
   });
 
-  useEffect(() => {
-    if (token) {
-      fetchPayments();
-      fetchStats();
-    }
-  }, [token, pagination.page, filters]);
-
-  useEffect(() => {
-    if (socket) {
-      socket.on('paymentLink:created', (payment) => {
-        setPayments(prev => [payment, ...prev]);
-        fetchStats();
-      });
-      socket.on('paymentLink:updated', (payment) => {
-        setPayments(prev => prev.map(p => 
-          p.razorpayLinkId === payment.razorpayLinkId ? payment : p
-        ));
-        fetchStats();
-      });
-      return () => {
-        socket.off('paymentLink:created');
-        socket.off('paymentLink:updated');
-      };
-    }
-  }, [socket]);
-
-  const fetchPayments = async () => {
+  const fetchPayments = useCallback(async () => {
     try {
       const params = new URLSearchParams({
         page: pagination.page,
@@ -72,9 +46,9 @@ const Payments = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token, pagination.page, pagination.limit, filters]);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const response = await axios.get(`${API_URL}/payments/stats`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -86,7 +60,33 @@ const Payments = () => {
     } catch (error) {
       console.error('Error fetching payment stats:', error);
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    if (token) {
+      fetchPayments();
+      fetchStats();
+    }
+  }, [token, fetchPayments, fetchStats, pagination.page, filters]);
+
+  useEffect(() => {
+    if (socket) {
+      socket.on('paymentLink:created', (payment) => {
+        setPayments(prev => [payment, ...prev]);
+        fetchStats();
+      });
+      socket.on('paymentLink:updated', (payment) => {
+        setPayments(prev => prev.map(p => 
+          p.razorpayLinkId === payment.razorpayLinkId ? payment : p
+        ));
+        fetchStats();
+      });
+      return () => {
+        socket.off('paymentLink:created');
+        socket.off('paymentLink:updated');
+      };
+    }
+  }, [socket, fetchStats]);
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {

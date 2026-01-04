@@ -3,7 +3,7 @@
  * Dashboard for viewing WhatsApp message logs and delivery status
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
@@ -24,33 +24,7 @@ const WhatsAppMessages = () => {
     endDate: ''
   });
 
-  useEffect(() => {
-    if (token) {
-      fetchMessages();
-      fetchStats();
-    }
-  }, [token, pagination.page, filters]);
-
-  useEffect(() => {
-    if (socket) {
-      socket.on('whatsapp:messageSent', (message) => {
-        setMessages(prev => [message, ...prev]);
-        fetchStats();
-      });
-      socket.on('whatsapp:statusUpdate', (message) => {
-        setMessages(prev => prev.map(m => 
-          m.messageId === message.messageId ? message : m
-        ));
-        fetchStats();
-      });
-      return () => {
-        socket.off('whatsapp:messageSent');
-        socket.off('whatsapp:statusUpdate');
-      };
-    }
-  }, [socket]);
-
-  const fetchMessages = async () => {
+  const fetchMessages = useCallback(async () => {
     try {
       const params = new URLSearchParams({
         page: pagination.page,
@@ -74,9 +48,9 @@ const WhatsAppMessages = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token, pagination.page, pagination.limit, filters]);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const response = await axios.get(`${API_URL}/whatsapp/stats`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -88,7 +62,33 @@ const WhatsAppMessages = () => {
     } catch (error) {
       console.error('Error fetching WhatsApp stats:', error);
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    if (token) {
+      fetchMessages();
+      fetchStats();
+    }
+  }, [token, fetchMessages, fetchStats, pagination.page, filters]);
+
+  useEffect(() => {
+    if (socket) {
+      socket.on('whatsapp:messageSent', (message) => {
+        setMessages(prev => [message, ...prev]);
+        fetchStats();
+      });
+      socket.on('whatsapp:statusUpdate', (message) => {
+        setMessages(prev => prev.map(m => 
+          m.messageId === message.messageId ? message : m
+        ));
+        fetchStats();
+      });
+      return () => {
+        socket.off('whatsapp:messageSent');
+        socket.off('whatsapp:statusUpdate');
+      };
+    }
+  }, [socket, fetchStats]);
 
   const formatDate = (dateString) => {
     if (!dateString) return '--';

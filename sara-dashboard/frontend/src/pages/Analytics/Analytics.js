@@ -2,7 +2,7 @@
  * Analytics Page
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -14,11 +14,7 @@ const Analytics = () => {
   const [period, setPeriod] = useState('7d');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchAnalytics();
-  }, [period]);
-
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
     try {
       setLoading(true);
       const response = await axios.get(`${API_URL}/calls/analytics?period=${period}`, {
@@ -35,7 +31,11 @@ const Analytics = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [period, token]);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
 
   const formatDuration = (seconds) => {
     if (!seconds) return '0:00';

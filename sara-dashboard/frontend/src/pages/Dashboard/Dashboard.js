@@ -2,7 +2,7 @@
  * Dashboard Page - Main Overview
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
@@ -20,15 +20,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
 
-  useEffect(() => {
-    if (token && user) {
-      fetchDashboardData();
-        const interval = setInterval(fetchDashboardData, 30000); // Refresh every 30s
-      return () => clearInterval(interval);
-    }
-  }, [token, user]);
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     if (!token) {
       setLoading(false);
       return;
@@ -115,7 +107,15 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token, stats, activeCalls, recentCalls, retryCount]);
+
+  useEffect(() => {
+    if (token && user) {
+      fetchDashboardData();
+      const interval = setInterval(fetchDashboardData, 30000); // Refresh every 30s
+      return () => clearInterval(interval);
+    }
+  }, [token, user, fetchDashboardData]);
 
   const formatDuration = (seconds) => {
     if (!seconds) return '0:00';

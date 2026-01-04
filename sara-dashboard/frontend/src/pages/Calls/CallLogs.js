@@ -2,7 +2,7 @@
  * Call Logs Page - Complete Implementation
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -19,11 +19,7 @@ const CallLogs = () => {
     search: ''
   });
 
-  useEffect(() => {
-    fetchCalls();
-  }, [page, filters]);
-
-  const fetchCalls = async () => {
+  const fetchCalls = useCallback(async () => {
     try {
       setLoading(true);
       const params = {
@@ -50,7 +46,11 @@ const CallLogs = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, filters, token]);
+
+  useEffect(() => {
+    fetchCalls();
+  }, [fetchCalls]);
 
   const formatDuration = (seconds) => {
     if (!seconds) return '0:00';

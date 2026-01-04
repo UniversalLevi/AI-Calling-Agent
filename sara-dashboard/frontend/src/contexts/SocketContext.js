@@ -164,7 +164,7 @@ export const SocketProvider = ({ children }) => {
         setIsConnected(false);
       }
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, socket]);
 
   // Emit call termination
   const terminateCall = (callId) => {
