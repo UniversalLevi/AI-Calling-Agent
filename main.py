@@ -16,31 +16,36 @@ This is the ONLY file you need to run. It handles everything:
 Just run: python main.py
 """
 
-# First, check and install dependencies
-print("\n" + "="*60)
-print("🤖 SARA AI CALLING BOT - Initializing...")
-print("="*60)
-
 import sys
+import os
 
-# Check dependencies before importing other modules
-print("\n🔧 Checking system dependencies...")
-try:
-    from dependency_checker import run_full_check
-    
-    # Run dependency check with minimal output during imports
-    if not run_full_check(auto_install=True, verbose=False):
-        print("\n❌ Some dependencies failed to install.")
-        print("   Attempting to continue anyway...")
-        print("   You may encounter errors. Consider running: pip install -r requirements.txt\n")
-except ImportError:
-    print("⚠️  Dependency checker not available. Continuing...")
-except Exception as e:
-    print(f"⚠️  Dependency check warning: {e}")
-    print("   Continuing anyway...\n")
+# Check if we're in production mode early
+PRODUCTION_MODE_CHECK = os.getenv('FLASK_ENV', 'development') == 'production'
+
+# First, check and install dependencies (skip banner in production)
+if not PRODUCTION_MODE_CHECK:
+    print("\n" + "="*60)
+    print("🤖 SARA AI CALLING BOT - Initializing...")
+    print("="*60)
+
+# Skip dependency checker in production mode
+# Dependencies should be installed via requirements.txt before deployment
+if not PRODUCTION_MODE_CHECK:
+    # Only check dependencies in development mode
+    print("\n🔧 Checking system dependencies...")
+    try:
+        from dependency_checker import run_full_check
+        if not run_full_check(auto_install=True, verbose=False):
+            print("\n❌ Some dependencies failed to install.")
+            print("   Attempting to continue anyway...")
+            print("   You may encounter errors. Consider running: pip install -r requirements.txt\n")
+    except ImportError:
+        print("⚠️  Dependency checker not available. Continuing...")
+    except Exception as e:
+        print(f"⚠️  Dependency check warning: {e}")
+        print("   Continuing anyway...\n")
 
 # Now import remaining modules
-import os
 import time
 import threading
 import subprocess
