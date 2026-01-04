@@ -1,26 +1,27 @@
 version: '3.8'
 
 services:
-  # MongoDB Database
-  mongodb:
-    image: mongo:7
-    container_name: sara-mongodb
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-changeme}
-      MONGO_INITDB_DATABASE: sara-dashboard
-    volumes:
-      - mongodb_data:/data/db
-    networks:
-      - sara-network
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # MongoDB Database (commented out - using external MongoDB)
+  # Uncomment if you want Docker to run MongoDB
+  # mongodb:
+  #   image: mongo:7
+  #   container_name: sara-mongodb
+  #   restart: unless-stopped
+  #   ports:
+  #     - "27017:27017"
+  #   environment:
+  #     MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+  #     MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-changeme}
+  #     MONGO_INITDB_DATABASE: sara-dashboard
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #   networks:
+  #     - sara-network
+  #   healthcheck:
+  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
 
   # Sara Voice Bot
   voice-bot:
@@ -53,8 +54,9 @@ services:
     networks:
       - sara-network
     depends_on:
-      - mongodb
       - dashboard-api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Access host MongoDB
 
   # Dashboard API
   dashboard-api:
@@ -68,7 +70,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=5016
-      - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME:-admin}:${MONGO_ROOT_PASSWORD:-changeme}@mongodb:27017/sara-dashboard?authSource=admin
+      - MONGODB_URI=${MONGODB_URI:-mongodb://admin:pass123@host.docker.internal:27017/sara-dashboard?authSource=admin}
       - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-this}
       - JWT_EXPIRE=7d
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5017}
@@ -78,9 +80,8 @@ services:
       - ./.env:/app/.env:ro
     networks:
       - sara-network
-    depends_on:
-      mongodb:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Access host MongoDB
 
   # Dashboard Frontend
   dashboard-frontend:
