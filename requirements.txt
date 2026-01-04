@@ -32,11 +32,12 @@ twilio==9.2.3                 # Twilio API for phone calls
 # Audio Processing
 # ----------------------------------------------------------------------------
 numpy==2.1.1                  # Numerical arrays for audio
-sounddevice==0.4.7            # Audio I/O
 soundfile==0.12.1             # Audio file reading/writing
-pygame==2.5.2                 # Audio playback
-pyaudio==0.2.14               # Audio streaming
-wave==0.0.2                   # WAV file handling
+# Optional audio packages (not needed for Twilio calls in Docker)
+# sounddevice==0.4.7            # Audio I/O (optional)
+# pygame==2.5.2                 # Audio playback (optional)
+# pyaudio==0.2.14               # Audio streaming (optional, requires portaudio)
+# wave is part of Python standard library, no need to install
 
 # Real-time Voice Processing & Interruption Detection
 # ----------------------------------------------------------------------------
@@ -65,9 +66,10 @@ pymongo>=4.6.0                # MongoDB driver
 
 # Optional (not required but recommended)
 # ----------------------------------------------------------------------------
-asyncio-mqtt==0.16.1          # MQTT for messaging (optional)
-pjsua2==2.13.1                # SIP client (optional)
-threading-timer==0.1.0        # Timer utilities (optional)
+# These are optional - install separately if needed
+# asyncio-mqtt==0.16.1          # MQTT for messaging (optional)
+# pjsua2==2.12                  # SIP client (optional - only 2.12 available)
+# threading-timer==0.1.0        # Timer utilities (optional)
 
 # ============================================================================
 # Installation Instructions
