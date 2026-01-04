@@ -3,7 +3,7 @@ module.exports = {
     {
       name: 'sara-voice-bot',
       script: 'main.py',
-      interpreter: './venv/bin/python',
+      interpreter: 'python3',
       cwd: __dirname,
       env: {
         FLASK_ENV: 'production',

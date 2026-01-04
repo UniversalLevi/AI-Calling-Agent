@@ -7,8 +7,6 @@ import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5016';
-
 const LiveCalls = () => {
   const { token } = useAuth();
   const { socket, isConnected } = useSocket();
