@@ -1,0 +1,27 @@
+# Sara Dashboard API Dockerfile
+FROM node:18-slim
+
+WORKDIR /app
+
+# Copy package files
+COPY sara-dashboard/backend/package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy application code
+COPY sara-dashboard/backend/ .
+
+# Create uploads directory
+RUN mkdir -p uploads
+
+# Expose port
+EXPOSE 5016
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=5016
+
+# Run the application
+CMD ["node", "server.js"]
+

@@ -1,0 +1,33 @@
+version: '3.8'
+
+# Production override file
+# Use with: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  mongodb:
+    # In production, you might want to use external MongoDB
+    # Comment out the mongodb service and set MONGODB_URI to external service
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+
+  voice-bot:
+    environment:
+      - BASE_URL=${BASE_URL}
+    # Remove .env volume mount in production if using environment variables directly
+    # volumes:
+    #   - ./.env:/app/.env:ro
+
+  dashboard-api:
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - JWT_SECRET=${JWT_SECRET}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - SOCKET_CORS_ORIGIN=${SOCKET_CORS_ORIGIN}
+
+  dashboard-frontend:
+    build:
+      args:
+        REACT_APP_API_URL: ${REACT_APP_API_URL}
+        REACT_APP_SOCKET_URL: ${REACT_APP_SOCKET_URL}
+

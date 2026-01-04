@@ -1,0 +1,109 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7
+    container_name: sara-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-changeme}
+      MONGO_INITDB_DATABASE: sara-dashboard
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - sara-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Sara Voice Bot
+  voice-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.voice-bot
+    container_name: sara-voice-bot
+    restart: unless-stopped
+    ports:
+      - "5015:5015"  # Voice bot API
+      - "5018:5018"  # Audio server
+    environment:
+      - FLASK_ENV=production
+      - PORT=5015
+      - AUDIO_PORT=5018
+      - BASE_URL=${BASE_URL:-https://veilforce.com}
+      - DASHBOARD_API_URL=http://dashboard-api:5016/api
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
+      - WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN}
+      - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID}
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+    volumes:
+      - ./logs:/app/logs
+      - ./audio_files:/app/audio_files
+      - ./.env:/app/.env:ro
+    networks:
+      - sara-network
+    depends_on:
+      - mongodb
+      - dashboard-api
+
+  # Dashboard API
+  dashboard-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard-api
+    container_name: sara-dashboard-api
+    restart: unless-stopped
+    ports:
+      - "5016:5016"
+    environment:
+      - NODE_ENV=production
+      - PORT=5016
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME:-admin}:${MONGO_ROOT_PASSWORD:-changeme}@mongodb:27017/sara-dashboard?authSource=admin
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-this}
+      - JWT_EXPIRE=7d
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5017}
+      - SOCKET_CORS_ORIGIN=${SOCKET_CORS_ORIGIN:-http://localhost:5017}
+    volumes:
+      - ./sara-dashboard/backend/uploads:/app/uploads
+      - ./.env:/app/.env:ro
+    networks:
+      - sara-network
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  # Dashboard Frontend
+  dashboard-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard-frontend
+      args:
+        REACT_APP_API_URL: ${REACT_APP_API_URL:-https://veilforce.com/api}
+        REACT_APP_SOCKET_URL: ${REACT_APP_SOCKET_URL:-https://veilforce.com}
+    container_name: sara-dashboard-frontend
+    restart: unless-stopped
+    ports:
+      - "5017:5017"
+    networks:
+      - sara-network
+    depends_on:
+      - dashboard-api
+
+volumes:
+  mongodb_data:
+    driver: local
+
+networks:
+  sara-network:
+    driver: bridge
+
