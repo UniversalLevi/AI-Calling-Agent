@@ -8,7 +8,7 @@
 # Core Framework & Environment
 # ----------------------------------------------------------------------------
 python-dotenv==1.0.1          # Environment variable management
-flask==3.1.3                  # Web framework for bot server
+flask==3.1.2                  # Web framework for bot server
 requests==2.32.3              # HTTP library for API calls
 psutil==5.9.8                 # System and process utilities
 
