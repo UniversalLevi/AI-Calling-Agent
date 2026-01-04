@@ -21,12 +21,21 @@ export const SocketProvider = ({ children }) => {
   const { isAuthenticated, user } = useAuth();
   const socketRef = useRef(null);
   const reconnectAttempts = useRef(0);
-  const maxReconnectAttempts = 5;
+  const maxReconnectAttempts = 3; // Reduced attempts
+  const socketDisabled = useRef(false); // Flag to disable socket permanently after failures
+  const connectionTimeoutRef = useRef(null);
+  
+  // Check if Socket.io is disabled via environment variable
+  const isSocketEnabled = process.env.REACT_APP_ENABLE_SOCKET !== 'false';
 
   // Initialize socket connection
   useEffect(() => {
     // Cleanup function
     const cleanup = () => {
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+        connectionTimeoutRef.current = null;
+      }
       if (socketRef.current) {
         console.log('🧹 Cleaning up socket connection');
         socketRef.current.removeAllListeners();
@@ -37,22 +46,49 @@ export const SocketProvider = ({ children }) => {
       }
     };
 
+    // Don't try to connect if socket is disabled
+    if (!isSocketEnabled || socketDisabled.current) {
+      if (!isSocketEnabled) {
+        console.log('⚠️ Socket.io disabled via environment variable');
+      } else {
+        console.log('⚠️ Socket.io disabled due to previous failures');
+      }
+      return cleanup;
+    }
+
     if (isAuthenticated && user) {
-      // Don't create new socket if one already exists
-      if (socketRef.current && socketRef.current.connected) {
-        return cleanup;
+      // Don't create new socket if one already exists and is connected
+      if (socketRef.current) {
+        if (socketRef.current.connected) {
+          return cleanup;
+        }
+        // If socket exists but not connected, clean it up first
+        cleanup();
       }
 
       console.log('🔌 Initializing socket connection');
+      
+      // Set a timeout to disable socket if connection takes too long
+      connectionTimeoutRef.current = setTimeout(() => {
+        if (socketRef.current && !socketRef.current.connected) {
+          console.error('⏱️ Socket connection timeout - disabling');
+          socketDisabled.current = true;
+          cleanup();
+        }
+      }, 10000); // 10 second timeout
+
       const newSocket = io(SOCKET_URL, {
         auth: {
           token: localStorage.getItem('token')
         },
         reconnection: true,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
+        reconnectionDelay: 2000, // Increased delay
+        reconnectionDelayMax: 10000, // Max 10 seconds
         reconnectionAttempts: maxReconnectAttempts,
-        transports: ['websocket', 'polling']
+        timeout: 5000, // Connection timeout
+        transports: ['polling'], // Start with polling only, upgrade to websocket if available
+        upgrade: true,
+        rememberUpgrade: false
       });
 
       socketRef.current = newSocket;
@@ -60,6 +96,10 @@ export const SocketProvider = ({ children }) => {
 
       // Connection event handlers
       newSocket.on('connect', () => {
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = null;
+        }
         console.log('🔌 Connected to server');
         setIsConnected(true);
         reconnectAttempts.current = 0;
@@ -72,20 +112,36 @@ export const SocketProvider = ({ children }) => {
         console.log('🔌 Disconnected from server:', reason);
         setIsConnected(false);
         
-        // Don't reconnect if user logged out
-        if (reason === 'io server disconnect' || !isAuthenticated) {
+        // Don't reconnect if user logged out or server disconnected
+        if (reason === 'io server disconnect' || reason === 'transport close' || !isAuthenticated) {
           cleanup();
         }
       });
 
       newSocket.on('connect_error', (error) => {
         reconnectAttempts.current += 1;
-        console.error('❌ Socket connection error:', error);
+        console.error('❌ Socket connection error:', error.message);
         setIsConnected(false);
         
+        // Disable socket after max attempts to prevent resource exhaustion
         if (reconnectAttempts.current >= maxReconnectAttempts) {
-          console.error('❌ Max reconnection attempts reached');
-          toast.error('Failed to connect to server. Please refresh the page.');
+          console.error('❌ Max reconnection attempts reached - disabling Socket.io');
+          socketDisabled.current = true;
+          if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+          }
+          cleanup();
+          // Don't show error toast - app works without socket
+          console.warn('⚠️ Socket.io disabled. App will continue without real-time updates.');
+        }
+      });
+
+      // Handle reconnection attempts
+      newSocket.io.on('reconnect_attempt', (attemptNumber) => {
+        console.log(`🔄 Socket reconnection attempt ${attemptNumber}/${maxReconnectAttempts}`);
+        if (attemptNumber >= maxReconnectAttempts) {
+          socketDisabled.current = true;
           cleanup();
         }
       });
@@ -198,10 +254,20 @@ export const SocketProvider = ({ children }) => {
     } else {
       // Disconnect socket if user is not authenticated
       cleanup();
+      socketDisabled.current = false; // Reset on logout
+      reconnectAttempts.current = 0;
       return () => {};
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, user?._id]); // Only depend on user ID, not entire user object
+
+  // Reset socket disabled flag when user changes (new login)
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      socketDisabled.current = false;
+      reconnectAttempts.current = 0;
+    }
+  }, [user?._id, isAuthenticated]);
 
   // Emit call termination
   const terminateCall = (callId) => {
