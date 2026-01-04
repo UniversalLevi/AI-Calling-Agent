@@ -242,7 +242,7 @@ def cleanup_old_sessions():
         print(f"⚠️ Session cleanup error: {e}")
 
 # Dashboard integration
-DASHBOARD_API_URL = "http://localhost:5000/api"
+DASHBOARD_API_URL = os.environ.get("DASHBOARD_API_URL", "http://localhost:5016/api")
 
 def log_call_to_dashboard(call_data):
     """Log call to dashboard backend"""
@@ -1763,18 +1763,19 @@ def start_voice_bot_server():
             import logging
             log = logging.getLogger('werkzeug')
             log.setLevel(logging.ERROR)
-            voice_bot_app.run(host='0.0.0.0', port=8000, debug=False, use_reloader=False)
+            voice_bot_app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5015)), debug=False, use_reloader=False)
         
         bot_thread = threading.Thread(target=run_voice_bot_server, daemon=True)
         bot_thread.start()
         
         # Wait for server to start
+        bot_port = int(os.environ.get('PORT', 5015))
         for i in range(15):
             try:
-                response = requests.get("http://localhost:8000/health", timeout=1)
+                response = requests.get(f"http://localhost:{bot_port}/health", timeout=1)
                 if response.status_code == 200:
                     running_services['voice_bot_server'] = bot_thread
-                    print("✅ Voice bot server started on port 8000!")
+                    print(f"✅ Voice bot server started on port {bot_port}!")
                     return True
             except:
                 time.sleep(1)
@@ -1808,7 +1809,8 @@ def start_ngrok():
     
     try:
         # Start ngrok
-        ngrok_process = subprocess.Popen(['ngrok', 'http', '8000'], 
+        bot_port = str(int(os.environ.get('PORT', 5015)))
+        ngrok_process = subprocess.Popen(['ngrok', 'http', bot_port], 
                                        stdout=subprocess.DEVNULL, 
                                        stderr=subprocess.DEVNULL)
         

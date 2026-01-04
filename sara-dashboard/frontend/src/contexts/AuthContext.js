@@ -8,7 +8,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 
 // Set axios base URL
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5016';
 axios.defaults.baseURL = API_URL;
 
 // Create context

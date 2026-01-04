@@ -544,3 +544,4 @@ pm2 monit           # Real-time monitor
 2. Check browser console for WebSocket errors
 3. Verify CORS settings in dashboard backend `.env`
 
+

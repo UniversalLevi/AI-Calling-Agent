@@ -37,7 +37,7 @@ const server = createServer(app);
 // Initialize Socket.io
 const io = new Server(server, {
   cors: {
-    origin: process.env.SOCKET_CORS_ORIGIN || "http://localhost:3000",
+    origin: process.env.SOCKET_CORS_ORIGIN || "http://localhost:5017",
     methods: ["GET", "POST"]
   }
 });
@@ -147,12 +147,12 @@ app.use('*', (req, res) => {
   });
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 5016;
 
 server.listen(PORT, () => {
   console.log(`🚀 Sara Dashboard Backend running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
+  console.log(`🔗 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5017'}`);
 });
 
 // Graceful shutdown
